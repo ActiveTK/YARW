@@ -30,6 +30,8 @@ Requirements:
 - Rust 1.70 or later
 - Windows 10/11
 
+Build:
+
 ```bash
 git clone https://github.com/ActiveTK/YARW.git
 cd YARW
