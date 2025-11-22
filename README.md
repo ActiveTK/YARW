@@ -1,0 +1,71 @@
+# YARW: Yet Another Rsync for Windows
+
+A native Windows implementation of rsync written in Rust, designed to provide efficient file synchronization on Windows systems. Neither f**king WSL nor Cygwin is required anymore.
+
+## Overview
+
+`YARW` is a ground-up reimplementation of the rsync file synchronization tool, specifically designed for Windows. While the original rsync is primarily available for Linux/Unix systems, this project brings the power of rsync's delta-transfer algorithm to Windows with full native support.
+
+## Features
+
+Simply type the following text to ChatGPT:
+
+```MarkDown
+Yo GPT plz tell me all the features in this repo: https://github.com/ActiveTK/YARW
+```
+
+Note that we offer almost the same options as the original rsync provides, generally speaking.
+
+## Setup
+
+### From Binary (Recommended)
+
+Download the latest release from the [Releases page](https://github.com/ActiveTK/YARW/releases) and add to your PATH.
+
+Currently it works as a stand-alone binary, as we don't provide options for installing (PR to implement installation is always welcome).
+
+### From Source
+
+Requirements:
+- Rust 1.70 or later
+- Windows 10/11
+
+```bash
+git clone https://github.com/ActiveTK/YARW.git
+cd YARW
+
+cargo build --release
+
+# The binary will be available at target/release/
+```
+
+## Quick Start
+
+### Basic File Synchronization
+
+```bash
+# Sync a directory (recursive)
+rsync -rv source/ destination/
+
+# Archive mode (recursive + preserve links)
+rsync -av source/ destination/
+
+# Show progress during transfer
+rsync -av --progress source/ destination/
+```
+
+### And more options
+
+Should you have any questions, feel free to ask Gemini or Claude.
+
+## Acknowledgments
+
+This project is inspired by the original rsync by Andrew Tridgell and Paul Mackerras. The algorithm is based on the rsync technical report available at https://rsync.samba.org/tech_report/.
+
+## License
+
+This program is released under the MIT License.
+
+© 2025 ActiveTK.  
+🔗 https://github.com/ActiveTK/YARW/blob/main/LICENSE
+
