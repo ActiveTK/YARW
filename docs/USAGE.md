@@ -958,7 +958,7 @@ rsync -av --backup --backup-dir=../old source/ dest/
 ## Next Steps
 
 - See [EXAMPLES.md](EXAMPLES.md) for real-world usage examples
-- See [README.md](README.md) for project overview
+- See [README.md](../README.md) for project overview
 
 ---
 
