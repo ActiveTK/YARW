@@ -3,8 +3,10 @@ use std::path::PathBuf;
 use ssh2::{Channel, Session};
 use crate::error::{RsyncError, Result};
 use std::io::Write;
-use std::process::Command;
+use std::fs;
 use tempfile::NamedTempFile;
+use rsa::pkcs1::DecodeRsaPrivateKey;
+use rsa::traits::PublicKeyParts;
 
 
 pub enum AuthMethod {
@@ -30,30 +32,58 @@ pub fn prompt_for_password(username: &str, host: &str) -> Result<String> {
     Ok(password)
 }
 
-fn generate_temp_public_key(private_key_path: &PathBuf) -> Result<NamedTempFile> {
-    let output = Command::new("ssh-keygen")
-        .arg("-y")
-        .arg("-f")
-        .arg(private_key_path)
-        .output()
-        .map_err(|e| RsyncError::Auth(format!(
-            "Failed to execute ssh-keygen to extract public key: {}. \
-            Please ensure ssh-keygen is installed and in PATH.",
-            e
-        )))?;
+fn extract_public_key_from_private(private_key_path: &PathBuf) -> Result<NamedTempFile> {
+    let key_data_str = fs::read_to_string(private_key_path)
+        .map_err(|e| RsyncError::Auth(format!("Failed to read private key file: {}", e)))?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(RsyncError::Auth(format!(
-            "Failed to extract public key from private key: {}",
-            stderr
-        )));
-    }
+    let public_key_str = if key_data_str.contains("BEGIN RSA PRIVATE KEY") {
+        let rsa_key = rsa::RsaPrivateKey::from_pkcs1_pem(&key_data_str)
+            .map_err(|e| RsyncError::Auth(format!("Failed to parse PKCS#1 RSA private key: {}", e)))?;
+
+        let public_key = rsa::RsaPublicKey::from(&rsa_key);
+
+        let mut e = public_key.e().to_bytes_be();
+        let mut n = public_key.n().to_bytes_be();
+
+        if e.first().map(|&b| b & 0x80 != 0).unwrap_or(false) {
+            e.insert(0, 0x00);
+        }
+        if n.first().map(|&b| b & 0x80 != 0).unwrap_or(false) {
+            n.insert(0, 0x00);
+        }
+
+        let mut ssh_pubkey_bytes = Vec::new();
+
+        let key_type = b"ssh-rsa";
+        ssh_pubkey_bytes.extend_from_slice(&(key_type.len() as u32).to_be_bytes());
+        ssh_pubkey_bytes.extend_from_slice(key_type);
+
+        ssh_pubkey_bytes.extend_from_slice(&(e.len() as u32).to_be_bytes());
+        ssh_pubkey_bytes.extend_from_slice(&e);
+
+        ssh_pubkey_bytes.extend_from_slice(&(n.len() as u32).to_be_bytes());
+        ssh_pubkey_bytes.extend_from_slice(&n);
+
+        use base64::Engine;
+        let public_key_b64 = base64::engine::general_purpose::STANDARD.encode(&ssh_pubkey_bytes);
+
+        format!("ssh-rsa {}\n", public_key_b64)
+    } else {
+        let key_data = fs::read(private_key_path)
+            .map_err(|e| RsyncError::Auth(format!("Failed to read private key file: {}", e)))?;
+
+        let private_key = ssh_key::PrivateKey::from_bytes(&key_data)
+            .map_err(|e| RsyncError::Auth(format!("Failed to parse private key: {}", e)))?;
+
+        let public_key = private_key.public_key();
+        public_key.to_openssh()
+            .map_err(|e| RsyncError::Auth(format!("Failed to serialize public key: {}", e)))?
+    };
 
     let mut temp_file = NamedTempFile::new()
         .map_err(|e| RsyncError::Io(e))?;
 
-    temp_file.write_all(&output.stdout)
+    temp_file.write_all(public_key_str.as_bytes())
         .map_err(|e| RsyncError::Io(e))?;
 
     temp_file.flush()
@@ -96,15 +126,68 @@ impl SshTransport {
                     )));
                 }
 
-                let temp_public_key = generate_temp_public_key(&private_key_path)?;
-                let public_key_path = temp_public_key.path();
+                let mut public_key_path = private_key_path.clone();
+                public_key_path.set_extension("pub");
 
-                session.userauth_pubkey_file(
-                    username,
-                    Some(public_key_path),
-                    &private_key_path,
-                    None,
-                ).map_err(|e| {
+                let alt_pub_path = private_key_path.with_file_name(
+                    format!("{}.pub", private_key_path.file_name().unwrap().to_string_lossy())
+                );
+
+                let result = if public_key_path.exists() {
+                    session.userauth_pubkey_file(
+                        username,
+                        Some(&public_key_path),
+                        &private_key_path,
+                        None,
+                    )
+                } else if alt_pub_path.exists() {
+                    session.userauth_pubkey_file(
+                        username,
+                        Some(&alt_pub_path),
+                        &private_key_path,
+                        None,
+                    )
+                } else {
+                    let private_key_str = fs::read_to_string(&private_key_path)
+                        .map_err(|e| RsyncError::Auth(format!("Failed to read private key: {}", e)))?;
+
+                    if private_key_str.contains("BEGIN RSA PRIVATE KEY") {
+                        let rsa_key = rsa::RsaPrivateKey::from_pkcs1_pem(&private_key_str)
+                            .map_err(|e| RsyncError::Auth(format!("Failed to parse private key: {}", e)))?;
+
+                        use rsa::pkcs8::EncodePrivateKey;
+                        let openssh_key_pem = rsa_key.to_pkcs8_pem(rsa::pkcs8::LineEnding::LF)
+                            .map_err(|e| RsyncError::Auth(format!("Failed to convert key to PKCS#8: {}", e)))?;
+
+                        let mut temp_private_key = NamedTempFile::new()
+                            .map_err(|e| RsyncError::Io(e))?;
+                        temp_private_key.write_all(openssh_key_pem.as_bytes())
+                            .map_err(|e| RsyncError::Io(e))?;
+                        temp_private_key.flush()
+                            .map_err(|e| RsyncError::Io(e))?;
+
+                        let temp_pub_key = extract_public_key_from_private(&private_key_path)?;
+
+                        let result = session.userauth_pubkey_file(
+                            username,
+                            Some(temp_pub_key.path()),
+                            temp_private_key.path(),
+                            None,
+                        );
+
+                        result
+                    } else {
+                        let temp_pub_key = extract_public_key_from_private(&private_key_path)?;
+                        session.userauth_pubkey_file(
+                            username,
+                            Some(temp_pub_key.path()),
+                            &private_key_path,
+                            None,
+                        )
+                    }
+                };
+
+                result.map_err(|e| {
                     let msg = e.to_string();
                     if msg.contains("unknown error") || msg.contains("Session(-1)") {
                         RsyncError::Auth(format!(
