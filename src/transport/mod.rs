@@ -11,4 +11,4 @@ pub use daemon_config::DaemonConfig;
 pub use daemon_client::DaemonClient;
 pub use local::{LocalTransport, SyncStats};
 pub use remote::RemoteTransport;
-pub use ssh::{AuthMethod, SshTransport};
+pub use ssh::{AuthMethod, SshTransport, prompt_for_password};

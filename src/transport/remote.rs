@@ -1,6 +1,6 @@
 use crate::options::Options;
 use crate::error::{Result, RsyncError};
-use super::{SshTransport, AuthMethod, SyncStats};
+use super::{SshTransport, AuthMethod, SyncStats, prompt_for_password};
 use super::ssh_command::parse_ssh_command;
 use crate::filesystem::{path_utils::{is_remote_path, parse_remote_path, to_unix_separators}, Scanner};
 use crate::protocol::{ProtocolStream, FileList, PROTOCOL_VERSION_MAX};
@@ -43,24 +43,74 @@ impl RemoteTransport {
                 user
             };
 
-            let (port, auth_method) = if let Some(ref rsh_command) = self.options.rsh {
+            let port = if let Some(ref rsh_command) = self.options.rsh {
                 let params = parse_ssh_command(rsh_command);
-                let port = params.port.unwrap_or(22);
-                let auth_method = if let Some(identity_file) = params.identity_file {
-                    AuthMethod::PublicKey(identity_file)
-                } else {
-                    AuthMethod::Agent
-                };
-                (port, auth_method)
+                params.port.unwrap_or(22)
             } else {
-                (22, AuthMethod::Agent)
+                22
             };
 
             let verbose = self.options.verbose_output();
             verbose.print_verbose(&format!("Connecting to {}@{}:{} ...", username, host, port));
 
-            match SshTransport::connect(&host, port, &username, auth_method) {
-                Ok(mut transport) => {
+            let mut transport_result: Option<SshTransport> = None;
+            let mut last_error: Option<String> = None;
+
+            if let Some(ref rsh_command) = self.options.rsh {
+                let params = parse_ssh_command(rsh_command);
+                if let Some(identity_file) = params.identity_file {
+                    verbose.print_verbose(&format!("Trying public key authentication: {}", identity_file.display()));
+                    match SshTransport::connect(&host, port, &username, AuthMethod::PublicKey(identity_file.clone())) {
+                        Ok(transport) => {
+                            verbose.print_verbose("Public key authentication successful.");
+                            transport_result = Some(transport);
+                        }
+                        Err(e) => {
+                            verbose.print_verbose(&format!("Public key authentication failed: {}", e));
+                            last_error = Some(e.to_string());
+                        }
+                    }
+                }
+            }
+
+            if transport_result.is_none() {
+                verbose.print_verbose("Trying SSH agent authentication...");
+                match SshTransport::connect(&host, port, &username, AuthMethod::Agent) {
+                    Ok(transport) => {
+                        verbose.print_verbose("SSH agent authentication successful.");
+                        transport_result = Some(transport);
+                    }
+                    Err(e) => {
+                        verbose.print_verbose(&format!("SSH agent authentication failed: {}", e));
+                        last_error = Some(e.to_string());
+                    }
+                }
+            }
+
+            if transport_result.is_none() {
+                verbose.print_verbose("Trying password authentication...");
+                match prompt_for_password(&username, &host) {
+                    Ok(password) => {
+                        match SshTransport::connect(&host, port, &username, AuthMethod::Password(password)) {
+                            Ok(transport) => {
+                                verbose.print_verbose("Password authentication successful.");
+                                transport_result = Some(transport);
+                            }
+                            Err(e) => {
+                                verbose.print_error(&format!("Password authentication failed: {}", e));
+                                last_error = Some(e.to_string());
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        verbose.print_error(&format!("Failed to read password: {}", e));
+                        last_error = Some(e.to_string());
+                    }
+                }
+            }
+
+            match transport_result {
+                Some(mut transport) => {
                     verbose.print_verbose("SSH connection successful.");
 
 
@@ -190,7 +240,10 @@ impl RemoteTransport {
                         Err(e) => return Err(RsyncError::RemoteExec(format!("Failed to execute remote command: {}", e))),
                     }
                 }
-                Err(e) => return Err(RsyncError::Network(format!("SSH connection failed: {}", e))),
+                None => {
+                    let error_msg = last_error.unwrap_or_else(|| "All authentication methods failed".to_string());
+                    return Err(RsyncError::Auth(format!("SSH connection failed: {}", error_msg)));
+                }
             }
         } else {
             return Err(RsyncError::InvalidPath(PathBuf::from(source)));
