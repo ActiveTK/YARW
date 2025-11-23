@@ -20,7 +20,7 @@ This document provides real-world examples and use cases for YARW, including aut
 Copy one directory to another:
 
 ```bash
-rsync -av C:\Projects\ D:\Backup\Projects\
+yarw -av C:\Projects\ D:\Backup\Projects\
 ```
 
 **What it does:**
@@ -31,7 +31,7 @@ rsync -av C:\Projects\ D:\Backup\Projects\
 ### Example 2: Sync with Progress Bar
 
 ```bash
-rsync -av --progress C:\Data\ E:\Mirror\Data\
+yarw -av --progress C:\Data\ E:\Mirror\Data\
 ```
 
 **What it does:**
@@ -42,7 +42,7 @@ rsync -av --progress C:\Data\ E:\Mirror\Data\
 ### Example 3: Test Before Running (Dry Run)
 
 ```bash
-rsync -avn --delete C:\Source\ D:\Destination\
+yarw -avn --delete C:\Source\ D:\Destination\
 ```
 
 **What it does:**
@@ -55,7 +55,7 @@ rsync -avn --delete C:\Source\ D:\Destination\
 ### Example 4: Daily Incremental Backup
 
 ```bash
-rsync -avu --stats C:\Important\ D:\Backup\Daily\
+yarw -avu --stats C:\Important\ D:\Backup\Daily\
 ```
 
 **What it does:**
@@ -73,10 +73,10 @@ rsync -avu --stats C:\Important\ D:\Backup\Daily\
 
 ```bash
 # Test first
-rsync -avn --delete C:\Master\ D:\Mirror\
+yarw -avn --delete C:\Master\ D:\Mirror\
 
 # If output looks good, run for real
-rsync -av --delete C:\Master\ D:\Mirror\
+yarw -av --delete C:\Master\ D:\Mirror\
 ```
 
 **What it does:**
@@ -93,7 +93,7 @@ rsync -av --delete C:\Master\ D:\Mirror\
 
 ```bash
 $TIMESTAMP = Get-Date -Format "yyyyMMdd-HHmmss"
-rsync -av --backup --backup-dir="D:\Backup\Old\$TIMESTAMP" C:\Projects\ D:\Backup\Current\
+yarw -av --backup --backup-dir="D:\Backup\Old\$TIMESTAMP" C:\Projects\ D:\Backup\Current\
 ```
 
 **What it does:**
@@ -109,7 +109,7 @@ rsync -av --backup --backup-dir="D:\Backup\Old\$TIMESTAMP" C:\Projects\ D:\Backu
 ### Example 7: Incremental Backup with Checksums
 
 ```bash
-rsync -avc --stats C:\Data\ D:\Verified-Backup\
+yarw -avc --stats C:\Data\ D:\Verified-Backup\
 ```
 
 **What it does:**
@@ -125,7 +125,7 @@ rsync -avc --stats C:\Data\ D:\Verified-Backup\
 ### Example 8: Compressed Backup to External Drive
 
 ```bash
-rsync -avz --compress-choice=zstd --progress C:\Photos\ E:\PhotoBackup\
+yarw -avz --compress-choice=zstd --progress C:\Photos\ E:\PhotoBackup\
 ```
 
 **What it does:**
@@ -144,10 +144,10 @@ rsync -avz --compress-choice=zstd --progress C:\Photos\ E:\PhotoBackup\
 
 ```bash
 # Sync A → B (only newer files)
-rsync -avu "C:\Folder A\" "C:\Folder B\"
+yarw -avu "C:\Folder A\" "C:\Folder B\"
 
 # Sync B → A (only newer files)
-rsync -avu "C:\Folder B\" "C:\Folder A\"
+yarw -avu "C:\Folder B\" "C:\Folder A\"
 ```
 
 **What it does:**
@@ -165,7 +165,7 @@ rsync -avu "C:\Folder B\" "C:\Folder A\"
 ### Example 10: Sync Multiple Sources
 
 ```bash
-rsync -av C:\Source1\ C:\Source2\ C:\Source3\ D:\Combined\
+yarw -av C:\Source1\ C:\Source2\ C:\Source3\ D:\Combined\
 ```
 
 **What it does:**
@@ -180,7 +180,7 @@ rsync -av C:\Source1\ C:\Source2\ C:\Source3\ D:\Combined\
 ### Example 11: Sync Between Network Shares
 
 ```bash
-rsync -av --progress \\server1\share\ \\server2\backup\
+yarw -av --progress \\server1\share\ \\server2\backup\
 ```
 
 **What it does:**
@@ -197,7 +197,7 @@ rsync -av --progress \\server1\share\ \\server2\backup\
 ### Example 12: Backup Only Documents
 
 ```bash
-rsync -av \
+yarw -av \
   --include="*.doc" \
   --include="*.docx" \
   --include="*.pdf" \
@@ -221,7 +221,7 @@ rsync -av \
 ### Example 13: Exclude Temporary and System Files
 
 ```bash
-rsync -av \
+yarw -av \
   --exclude=".git" \
   --exclude="node_modules" \
   --exclude="*.tmp" \
@@ -265,7 +265,7 @@ Create `backup-filter.txt`:
 
 Then run:
 ```bash
-rsync -av --exclude-from=backup-filter.txt C:\Data\ D:\Backup\
+yarw -av --exclude-from=backup-filter.txt C:\Data\ D:\Backup\
 ```
 
 **What it does:**
@@ -281,7 +281,7 @@ rsync -av --exclude-from=backup-filter.txt C:\Data\ D:\Backup\
 ### Example 15: Photos by Extension
 
 ```bash
-rsync -av \
+yarw -av \
   --include="*.jpg" \
   --include="*.jpeg" \
   --include="*.png" \
@@ -309,7 +309,7 @@ rsync -av \
 ### Example 16: Sync to Network Share with Bandwidth Limit
 
 ```bash
-rsync -avz --bwlimit=5000 --progress C:\Data\ \\nas\backup\
+yarw -avz --bwlimit=5000 --progress C:\Data\ \\nas\backup\
 ```
 
 **What it does:**
@@ -325,7 +325,7 @@ rsync -avz --bwlimit=5000 --progress C:\Data\ \\nas\backup\
 ### Example 17: Large File Transfer with Resume
 
 ```bash
-rsync -av --partial --progress LargeFile.iso \\server\share\
+yarw -av --partial --progress LargeFile.iso \\server\share\
 ```
 
 **What it does:**
@@ -342,7 +342,7 @@ rsync -av --partial --progress LargeFile.iso \\server\share\
 ### Example 18: Quick Sync (Size Only)
 
 ```bash
-rsync -av --size-only \\source\share\ C:\Local\
+yarw -av --size-only \\source\share\ C:\Local\
 ```
 
 **What it does:**
@@ -373,7 +373,7 @@ echo Source: %SOURCE% >> "%LOG%"
 echo Destination: %DEST% >> "%LOG%"
 echo. >> "%LOG%"
 
-rsync -av --delete --stats %SOURCE%\ %DEST%\ >> "%LOG%" 2>&1
+yarw -av --delete --stats %SOURCE%\ %DEST%\ >> "%LOG%" 2>&1
 
 IF %ERRORLEVEL% EQU 0 (
     echo. >> "%LOG%"
@@ -415,7 +415,7 @@ $SMTPServer = "smtp.yourdomain.com"
 
 # Start backup
 Write-Host "Starting backup..."
-$output = & rsync -av --delete --stats "$SOURCE\" "$DEST\" 2>&1 | Tee-Object -FilePath $LOGFILE
+$output = & yarw -av --delete --stats "$SOURCE\" "$DEST\" 2>&1 | Tee-Object -FilePath $LOGFILE
 
 if ($LASTEXITCODE -eq 0) {
     $subject = "Backup Successful - $(Get-Date -Format 'yyyy-MM-dd')"
@@ -455,7 +455,7 @@ $CURRENT_BACKUP = "$BACKUP_BASE\$WEEK"
 
 # Create current week's backup
 Write-Host "Creating backup for week $WEEK..."
-rsync -av --delete "$SOURCE\" "$CURRENT_BACKUP\"
+yarw -av --delete "$SOURCE\" "$CURRENT_BACKUP\"
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "Backup successful: $CURRENT_BACKUP"
@@ -481,14 +481,14 @@ if ($LASTEXITCODE -eq 0) {
 
 ```bash
 # Test deployment
-rsync -avn --delete \
+yarw -avn --delete \
   --exclude=".git" \
   --exclude="node_modules" \
   --exclude="*.log" \
   C:\WebProjects\mysite\ \\webserver\www\mysite\
 
 # If test looks good, deploy
-rsync -av --delete \
+yarw -av --delete \
   --exclude=".git" \
   --exclude="node_modules" \
   --exclude="*.log" \
@@ -504,7 +504,7 @@ rsync -av --delete \
 
 ```bash
 # After build completes
-rsync -av --delete C:\Projects\app\dist\ \\buildserver\releases\latest\
+yarw -av --delete C:\Projects\app\dist\ \\buildserver\releases\latest\
 ```
 
 **What it does:**
@@ -516,7 +516,7 @@ rsync -av --delete C:\Projects\app\dist\ \\buildserver\releases\latest\
 
 ```bash
 # Sync project to laptop for remote work
-rsync -av \
+yarw -av \
   --exclude=".git" \
   --exclude="target" \
   --exclude="build" \
@@ -535,10 +535,10 @@ rsync -av \
 
 ```bash
 # Initial backup (full copy)
-rsync -av --progress C:\Photos\ E:\PhotoBackup\
+yarw -av --progress C:\Photos\ E:\PhotoBackup\
 
 # Daily incremental updates
-rsync -avu --itemize-changes C:\Photos\ E:\PhotoBackup\
+yarw -avu --itemize-changes C:\Photos\ E:\PhotoBackup\
 ```
 
 **What it does:**
@@ -548,7 +548,7 @@ rsync -avu --itemize-changes C:\Photos\ E:\PhotoBackup\
 ### Example 26: Video Archive with Checksum Verification
 
 ```bash
-rsync -avc --progress C:\Videos\ \\nas\VideoArchive\
+yarw -avc --progress C:\Videos\ \\nas\VideoArchive\
 ```
 
 **What it does:**
@@ -560,14 +560,14 @@ rsync -avc --progress C:\Videos\ \\nas\VideoArchive\
 
 ```bash
 # Create filter for 2024 photos
-rsync -av \
+yarw -av \
   --include="*2024*" \
   --include="*/" \
   --exclude="*" \
   C:\AllPhotos\ C:\SortedPhotos\2024\
 
 # Repeat for other years
-rsync -av \
+yarw -av \
   --include="*2023*" \
   --include="*/" \
   --exclude="*" \
@@ -585,10 +585,10 @@ rsync -av \
 
 ```bash
 # For overnight transfer (no limit during off-hours)
-rsync -avz --bwlimit=0 --progress C:\BigData\ \\server\backup\
+yarw -avz --bwlimit=0 --progress C:\BigData\ \\server\backup\
 
 # For daytime transfer (limited to 2 MB/s)
-rsync -avz --bwlimit=2000 --progress C:\BigData\ \\server\backup\
+yarw -avz --bwlimit=2000 --progress C:\BigData\ \\server\backup\
 ```
 
 ### Example 29: Multi-Stage Backup Strategy
@@ -597,17 +597,17 @@ Create `multi-stage-backup.ps1`:
 ```powershell
 # Stage 1: Quick sync to local external drive
 Write-Host "Stage 1: Local backup..."
-rsync -av --delete C:\Data\ E:\LocalBackup\
+yarw -av --delete C:\Data\ E:\LocalBackup\
 
 # Stage 2: Sync to network (compressed)
 Write-Host "Stage 2: Network backup..."
-rsync -avz --delete E:\LocalBackup\ \\nas\RemoteBackup\
+yarw -avz --delete E:\LocalBackup\ \\nas\RemoteBackup\
 
 # Stage 3: Weekly archive (if Sunday)
 if ((Get-Date).DayOfWeek -eq 'Sunday') {
     Write-Host "Stage 3: Weekly archive..."
     $WEEK = (Get-Date).ToString("yyyy-Www")
-    rsync -av C:\Data\ "\\nas\Archives\$WEEK\"
+    yarw -av C:\Data\ "\\nas\Archives\$WEEK\"
 }
 
 Write-Host "All backup stages completed!"
@@ -625,7 +625,7 @@ Photos/FamilyPhoto.jpg
 
 Then run:
 ```bash
-rsync -av --files-from=important-files.txt C:\ D:\SelectedBackup\
+yarw -av --files-from=important-files.txt C:\ D:\SelectedBackup\
 ```
 
 **What it does:**
@@ -639,22 +639,22 @@ rsync -av --files-from=important-files.txt C:\ D:\SelectedBackup\
 
 ```bash
 # Test
-rsync -avn --delete source/ dest/
+yarw -avn --delete source/ dest/
 
 # Verify output, then run
-rsync -av --delete source/ dest/
+yarw -av --delete source/ dest/
 ```
 
 ### 2. Use Logging for Automated Backups
 
 ```bash
-rsync -av --log-file=backup.log source/ dest/
+yarw -av --log-file=backup.log source/ dest/
 ```
 
 ### 3. Monitor Long Transfers
 
 ```bash
-rsync -av --progress --stats source/ dest/
+yarw -av --progress --stats source/ dest/
 ```
 
 ### 4. Create Backup Scripts
@@ -670,28 +670,28 @@ Maintain exclude/include patterns in version-controlled files for reproducibilit
 ### Problem: Need to Resume Interrupted Transfer
 
 ```bash
-rsync -av --partial --progress source/ dest/
+yarw -av --partial --progress source/ dest/
 ```
 
 ### Problem: Files Have Wrong Timestamps
 
 ```bash
 # Use checksum instead of time
-rsync -avc source/ dest/
+yarw -avc source/ dest/
 ```
 
 ### Problem: Too Slow Over Network
 
 ```bash
 # Use compression and size-only comparison
-rsync -avz --size-only source/ dest/
+yarw -avz --size-only source/ dest/
 ```
 
 ### Problem: Running Out of Disk Space
 
 ```bash
 # Use --inplace to avoid temporary files
-rsync -av --inplace source/ dest/
+yarw -av --inplace source/ dest/
 ```
 
 ## Summary
