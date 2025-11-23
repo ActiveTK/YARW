@@ -16,42 +16,39 @@ use transport::{AuthMethod, DaemonClient, DaemonConfig, RemoteTransport, RsyncDa
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // ロガーの初期化
+
     env_logger::init();
 
-    // コマンドライン引数のパース
+
     let cli = Cli::parse();
 
-    // ソースとデスティネーションを取得（into_options() の前に）
+
     let sources = cli.source.clone();
     let destination = cli.destination.clone();
 
-    // Optionsに変換
+
     let options = cli.into_options()?;
 
-    // ログファイルの初期化（--log-file オプションが指定されている場合）
+    let verbose = options.verbose_output();
+
     if let Some(ref log_file_path) = options.log_file {
         match output::init_logger(log_file_path) {
             Ok(_) => {
-                if options.verbose > 0 {
-                    println!("Logging to file: {}", log_file_path.display());
-                }
+                verbose.print_basic(&format!("Logging to file: {}", log_file_path.display()));
                 output::log_with_timestamp(&format!("YARW (Yet Another Rsync for Windows) v0.1.0 started"));
                 output::log(&format!("Command: rsync {} {}", sources.join(" "), destination));
             }
             Err(e) => {
-                eprintln!("Warning: Failed to initialize log file: {}", e);
+                verbose.print_warning(&format!("Failed to initialize log file: {}", e));
             }
         }
     }
 
-    // Verboseモード
-    if options.verbose > 0 {
-        println!("YARW (Yet Another Rsync for Windows) v0.1.0");
-        println!("Verbose level: {}", options.verbose);
-    }
 
-    // デーモンモードチェック
+    verbose.print_basic("YARW (Yet Another Rsync for Windows) v0.1.0");
+    verbose.print_basic(&format!("Verbose level: {}", options.verbose));
+
+
     if options.daemon {
         let config_path = options.config.clone().unwrap_or_else(|| "rsyncd.conf".into());
         let config_str = std::fs::read_to_string(config_path)?;
@@ -61,62 +58,58 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    // ローカル転送を実行
+
     let local_transport = transport::LocalTransport::new(options.clone());
 
     for source_str in &sources {
         let source = std::path::PathBuf::from(source_str);
         let dest = std::path::PathBuf::from(&destination);
 
-        // リモート転送のチェック
+
         let is_remote_source = is_remote_path(source_str);
         let is_remote_dest = is_remote_path(&destination);
         let is_daemon_source = is_daemon_path(source_str);
         let is_daemon_dest = is_daemon_path(&destination);
 
         if is_daemon_source || is_daemon_dest {
-            // rsync:// プロトコル処理
+
             if is_daemon_source {
-                // ダウンロード: rsync://host/module/path -> local
+
                 match DaemonClient::parse_daemon_url(source_str) {
                     Ok((host, port, module, remote_path)) => {
-                        println!("Downloading from rsync daemon: {}:{}/{}", host, port, module);
+                        verbose.print_basic(&format!("Downloading from rsync daemon: {}:{}/{}", host, port, module));
                         let client = DaemonClient::new(host, port);
                         match client.download(&module, &remote_path, &dest).await {
                             Ok(stats) => {
-                                if options.verbose > 0 {
-                                    println!("Download completed: {} files", stats.scanned_files);
-                                }
+                                verbose.print_basic(&format!("Download completed: {} files", stats.scanned_files));
                             }
                             Err(e) => {
-                                eprintln!("Error downloading from daemon: {}", e);
+                                verbose.print_error(&format!("downloading from daemon: {}", e));
                             }
                         }
                     }
                     Err(e) => {
-                        eprintln!("Error parsing daemon URL: {}", e);
+                        verbose.print_error(&format!("parsing daemon URL: {}", e));
                     }
                 }
             } else {
-                // アップロード: local -> rsync://host/module/path
+
                 match DaemonClient::parse_daemon_url(&destination) {
                     Ok((host, port, module, remote_path)) => {
-                        println!("Uploading to rsync daemon: {}:{}/{}", host, port, module);
+                        verbose.print_basic(&format!("Uploading to rsync daemon: {}:{}/{}", host, port, module));
                         let client = DaemonClient::new(host, port);
                         match client.upload(&module, &source, &remote_path).await {
                             Ok(stats) => {
-                                if options.verbose > 0 {
-                                    println!("Upload completed: {} files, {} bytes",
-                                        stats.transferred_files, stats.transferred_bytes);
-                                }
+                                verbose.print_basic(&format!("Upload completed: {} files, {} bytes",
+                                    stats.transferred_files, stats.transferred_bytes));
                             }
                             Err(e) => {
-                                eprintln!("Error uploading to daemon: {}", e);
+                                verbose.print_error(&format!("uploading to daemon: {}", e));
                             }
                         }
                     }
                     Err(e) => {
-                        eprintln!("Error parsing daemon URL: {}", e);
+                        verbose.print_error(&format!("parsing daemon URL: {}", e));
                     }
                 }
             }
@@ -128,15 +121,15 @@ async fn main() -> Result<()> {
             };
 
             if let Some((user, host)) = user_host {
-                println!("Remote transfer detected.");
+                verbose.print_basic("Remote transfer detected.");
                 let username = if user.is_empty() {
                     whoami::username()
                 } else {
                     user
                 };
-                println!("Connecting to {}@{}...", username, host);
+                verbose.print_basic(&format!("Connecting to {}@{}...", username, host));
 
-                // For now, default to SSH agent authentication
+
                 let _auth_method = AuthMethod::Agent;
 
                 let remote_transport = RemoteTransport::new(options.clone());
@@ -147,29 +140,25 @@ async fn main() -> Result<()> {
                 };
                 match result {
                     Ok(_) => {
-                        if options.verbose > 0 {
-                            println!("\nRemote sync for {} completed successfully!", source.display());
-                        }
+                        verbose.print_basic(&format!("\nRemote sync for {} completed successfully!", source.display()));
                     }
                     Err(e) => {
-                        eprintln!("Error in remote sync for {}: {}", source.display(), e);
+                        verbose.print_error(&format!("in remote sync for {}: {}", source.display(), e));
                     }
                 }
             } else {
-                eprintln!("Could not parse remote path.");
+                verbose.print_error("Could not parse remote path.");
             }
         } else {
             match local_transport.sync(&source, &dest) {
                 Ok(stats) => {
                     if options.stats {
-                        stats.display(options.human_readable);
+                        stats.display(options.human_readable, &verbose);
                     }
-                    if options.verbose > 0 {
-                        println!("\nSync for {} completed successfully!", source.display());
-                    }
+                    verbose.print_basic(&format!("\nSync for {} completed successfully!", source.display()));
                 }
                 Err(e) => {
-                    eprintln!("Error syncing {}: {}", source.display(), e);
+                    verbose.print_error(&format!("syncing {}: {}", source.display(), e));
                 }
             }
         }

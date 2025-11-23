@@ -5,20 +5,21 @@ use crate::error::{Result, RsyncError};
 use crate::algorithm::delta::DeltaInstruction;
 use crate::options::Options;
 use crate::algorithm::compress::Compressor;
+use crate::filesystem::buffer_optimizer::BufferOptimizer;
 use tempfile::NamedTempFile;
 
-/// 受信者（デルタ指示を適用してファイルを再構成）
+
 pub struct Receiver {
-    /// 一時ファイルのディレクトリ
+
     temp_dir: Option<PathBuf>,
-    /// ブロックサイズ
+
     block_size: usize,
-    /// 圧縮アルゴリズム
+
     compressor: Option<Compressor>,
 }
 
 impl Receiver {
-    /// 新しいReceiverを作成
+
     pub fn new(block_size: usize, options: &Options) -> Self {
         let compressor = if options.compress {
             Some(Compressor::new(options.compress_choice.unwrap_or_default()))
@@ -32,14 +33,14 @@ impl Receiver {
         }
     }
 
-    /// 一時ファイルのディレクトリを設定
+
     #[allow(dead_code)]
     pub fn with_temp_dir(mut self, temp_dir: PathBuf) -> Self {
         self.temp_dir = Some(temp_dir);
         self
     }
 
-    /// デルタ指示を適用してファイルを再構成
+
     pub fn reconstruct_file(
         &self,
         base_file: Option<&Path>,
@@ -58,7 +59,7 @@ impl Receiver {
                 output.with_extension("partial")
             }
         } else {
-            // partialが無効な場合は通常のtempfileを使用
+
             let temp_file = if let Some(temp_dir) = &self.temp_dir {
                 NamedTempFile::new_in(temp_dir)?
             } else {
@@ -69,12 +70,15 @@ impl Receiver {
 
 
         let result = (|| -> Result<()> {
-            let mut writer = BufWriter::new(File::create(&partial_path)?);
+            let optimizer = BufferOptimizer::new();
+            let writer_buffer_size = optimizer.optimal_buffer_for_file(&partial_path);
+            let mut writer = BufWriter::with_capacity(writer_buffer_size, File::create(&partial_path)?);
 
-            // ベースファイルを開く（存在する場合）
+
             let mut base_reader = if let Some(base_path) = base_file {
                 if base_path.exists() {
-                    Some(BufReader::new(File::open(base_path)?))
+                    let reader_buffer_size = optimizer.optimal_buffer_for_file(base_path);
+                    Some(BufReader::with_capacity(reader_buffer_size, File::open(base_path)?))
                 } else {
                     None
                 }
@@ -82,7 +86,7 @@ impl Receiver {
                 None
             };
 
-            // デルタ指示を順次処理
+
             for instruction in delta {
                 match instruction {
                     DeltaInstruction::MatchedBlock { index } => {
@@ -113,10 +117,10 @@ impl Receiver {
         })();
 
         if result.is_ok() {
-            // 成功時はリネーム
+
             std::fs::rename(&partial_path, output)?;
         } else {
-            // partialオプションが無効な場合はファイルを削除
+
             if !options.partial {
                 let _ = std::fs::remove_file(&partial_path);
             }
@@ -124,28 +128,32 @@ impl Receiver {
 
         result
     }
-    
+
     fn reconstruct_file_inplace(
         &self,
         base_file: Option<&Path>,
         delta: &[DeltaInstruction],
         output: &Path,
     ) -> Result<()> {
-        let mut writer = BufWriter::new(
+        let optimizer = BufferOptimizer::new();
+        let writer_buffer_size = optimizer.optimal_buffer_for_file(output);
+        let mut writer = BufWriter::with_capacity(
+            writer_buffer_size,
             OpenOptions::new().write(true).open(output)?
         );
-    
-        // ベースファイルを開く（存在する場合）
+
+
         let mut base_reader = if let Some(base_path) = base_file {
             if base_path.exists() {
-                Some(BufReader::new(File::open(base_path)?))
+                let reader_buffer_size = optimizer.optimal_buffer_for_file(base_path);
+                Some(BufReader::with_capacity(reader_buffer_size, File::open(base_path)?))
             } else {
                 None
             }
         } else {
             None
         };
-    
+
         for instruction in delta {
             match instruction {
                 DeltaInstruction::MatchedBlock { index } => {
@@ -177,7 +185,7 @@ impl Receiver {
         Ok(())
     }
 
-    /// ファイルを検証（チェックサム比較）
+
     #[allow(dead_code)]
     pub fn verify_file(&self, file: &Path, expected_size: u64) -> Result<bool> {
         let metadata = std::fs::metadata(file)?;
@@ -338,8 +346,6 @@ mod tests {
         assert_eq!(reconstructed, source_content);
 
         let delta_size: usize = delta.iter().map(|i| i.size()).sum();
-        println!("Original size: {}", source_content.len());
-        println!("Delta size: {}", delta_size);
         assert!(delta_size < source_content.len());
 
         Ok(())

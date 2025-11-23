@@ -12,5 +12,3 @@ pub use sender::Sender;
 pub use receiver::Receiver;
 pub use bwlimit::BandwidthLimiter;
 pub use compress::Compressor;
-#[allow(unused_imports)]
-pub use parallel_checksum::ParallelChecksumEngine;

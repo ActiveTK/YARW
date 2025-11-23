@@ -1,6 +1,6 @@
 use indicatif::{ProgressBar, ProgressStyle};
 
-/// プログレス表示
+
 pub struct ProgressDisplay {
     bar: ProgressBar,
     #[allow(dead_code)]
@@ -8,7 +8,7 @@ pub struct ProgressDisplay {
 }
 
 impl ProgressDisplay {
-    /// 新しいプログレス表示を作成
+
     pub fn new(total_bytes: u64, file_count: usize) -> Self {
         let bar = ProgressBar::new(total_bytes);
 
@@ -27,18 +27,18 @@ impl ProgressDisplay {
         }
     }
 
-    /// 進捗を更新
+
     pub fn update(&self, bytes_transferred: u64, current_file: &str) {
         self.bar.set_position(bytes_transferred);
         self.bar.set_message(current_file.to_string());
     }
 
-    /// 転送完了
+
     pub fn finish(&self) {
         self.bar.finish_with_message("Transfer complete");
     }
 
-    /// プログレスバーを非表示にする（テストやクワイエットモード用）
+
     #[allow(dead_code)]
     pub fn hide(&self) {
         self.bar.set_draw_target(indicatif::ProgressDrawTarget::hidden());

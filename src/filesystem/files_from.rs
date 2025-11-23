@@ -2,20 +2,21 @@ use std::path::{Path, PathBuf};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use crate::error::{Result, RsyncError};
+use crate::output::VerboseOutput;
 
-/// ファイルリストをファイルから読み込む
-///
-/// `--files-from` オプションで指定されたファイルから、
-/// 転送対象のファイルリストを読み込みます。
-///
-/// # 引数
-/// * `file_path` - ファイルリストが記載されたファイルのパス
-///
-/// # 戻り値
-/// 転送対象のファイルパスのリスト
-///
-/// # エラー
-/// ファイルが存在しない場合や読み込みエラーの場合はエラーを返します
+
+
+
+
+
+
+
+
+
+
+
+
+
 pub fn read_files_from(file_path: &Path) -> Result<Vec<PathBuf>> {
     let file = File::open(file_path).map_err(|e| {
         RsyncError::Io(std::io::Error::new(
@@ -26,23 +27,24 @@ pub fn read_files_from(file_path: &Path) -> Result<Vec<PathBuf>> {
 
     let reader = BufReader::new(file);
     let mut files = Vec::new();
+    let verbose = VerboseOutput::new(1, false);
 
     for (line_num, line) in reader.lines().enumerate() {
         let line = line?;
 
-        // 空行とコメント行（#で始まる）をスキップ
+
         let trimmed = line.trim();
         if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
         }
 
-        // パスを正規化
+
         let path = PathBuf::from(trimmed);
 
-        // ファイルが存在するか確認（警告のみ、エラーにはしない）
+
         if !path.exists() {
-            eprintln!("Warning: File listed in files-from does not exist (line {}): {}",
-                line_num + 1, path.display());
+            verbose.print_warning(&format!("File listed in files-from does not exist (line {}): {}",
+                line_num + 1, path.display()));
         }
 
         files.push(path);
@@ -61,10 +63,10 @@ mod tests {
     fn test_read_files_from() -> Result<()> {
         let mut temp_file = NamedTempFile::new()?;
 
-        // テスト用のファイルリストを作成
+
         writeln!(temp_file, "file1.txt")?;
         writeln!(temp_file, "file2.txt")?;
-        writeln!(temp_file, "")?;  // 空行
+        writeln!(temp_file, "")?;
         writeln!(temp_file, "# コメント")?;
         writeln!(temp_file, "file3.txt")?;
 

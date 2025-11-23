@@ -2,7 +2,6 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-#[allow(dead_code)]
 #[derive(Debug, Deserialize, Clone)]
 pub struct DaemonConfig {
     pub address: String,
@@ -11,7 +10,6 @@ pub struct DaemonConfig {
     pub modules: HashMap<String, ModuleConfig>,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Deserialize, Clone)]
 pub struct ModuleConfig {
     pub path: PathBuf,

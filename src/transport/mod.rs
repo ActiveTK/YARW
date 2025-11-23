@@ -12,6 +12,3 @@ pub use daemon_client::DaemonClient;
 pub use local::{LocalTransport, SyncStats};
 pub use remote::RemoteTransport;
 pub use ssh::{AuthMethod, SshTransport};
-pub use ssh_command::{parse_ssh_command, SshConnectionParams};
-
-// pub use remote::RemoteProcess; // TODO: Implement RemoteProcess in src/transport/remote.rs
