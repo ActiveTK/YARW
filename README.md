@@ -30,7 +30,7 @@ Also, you can try up-to-date version using a raw binary file at `/bin/yarw.exe` 
 
 ```bash
 git clone https://github.com/ActiveTK/YARW.git
-./YARW/bin/yarw.exe
+.\YARW\bin\yarw.exe
 ```
 
 ### From Source
