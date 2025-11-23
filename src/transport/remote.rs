@@ -120,10 +120,11 @@ impl RemoteTransport {
                     let remote_unix_path = to_unix_separators(&remote_raw_path);
 
 
-                    let mut rsync_args = vec![
-                        "--server",
-                        "--sender",
-                    ];
+                    let mut rsync_args = vec!["--server"];
+
+                    if is_remote_source {
+                        rsync_args.push("--sender");
+                    }
 
 
                     if self.options.recursive { rsync_args.push("-r"); }
@@ -157,19 +158,40 @@ impl RemoteTransport {
                             verbose.print_verbose(&format!("Negotiated protocol version: {}", remote_version));
 
 
-                            let scanner = Scanner::new()
-                                .recursive(self.options.recursive)
-                                .follow_symlinks(self.options.copy_links);
-                            let local_file_infos = scanner.scan(local_path)?;
+                            let local_file_infos = if !is_remote_source {
+                                let scanner = Scanner::new()
+                                    .recursive(self.options.recursive)
+                                    .follow_symlinks(self.options.copy_links);
+                                let files = scanner.scan(local_path)?;
 
+                                verbose.print_verbose("Sending file list...");
+                                FileList::encode(&mut stream, &files)?;
+                                verbose.print_verbose("File list sent.");
 
-                            verbose.print_verbose("Sending file list...");
-                            FileList::encode(&mut stream, &local_file_infos)?;
-                            verbose.print_verbose("File list sent.");
+                                files
+                            } else {
+                                verbose.print_verbose("Skipping file list send (remote source mode)");
+                                Vec::new()
+                            };
 
 
                             verbose.print_verbose("Receiving remote file list...");
-                            let remote_file_infos = FileList::decode(&mut stream)?;
+                            let remote_file_infos = match FileList::decode(&mut stream) {
+                                Ok(files) => files,
+                                Err(e) => {
+                                    verbose.print_error(&format!("Failed to decode file list: {}", e));
+                                    let mut stderr_bytes = Vec::new();
+                                    match channel.stderr().read_to_end(&mut stderr_bytes) {
+                                        Ok(_) => {
+                                            if !stderr_bytes.is_empty() {
+                                                verbose.print_error(&format!("Remote stderr: {}", String::from_utf8_lossy(&stderr_bytes)));
+                                            }
+                                        },
+                                        Err(read_err) => verbose.print_error(&format!("Failed to read remote stderr: {}", read_err)),
+                                    }
+                                    return Err(e);
+                                }
+                            };
                             verbose.print_verbose(&format!("Received {} remote files.", remote_file_infos.len()));
                             stats.scanned_files = local_file_infos.len();
 

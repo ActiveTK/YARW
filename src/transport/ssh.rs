@@ -147,7 +147,13 @@ impl std::io::Read for SshChannel {
                         }
                         break;
                     }
-                    Some(_) => continue,
+                    Some(ChannelMsg::ExtendedData { ref data, ext: _ }) => {
+                        std::io::stderr().write_all(data).ok();
+                        continue;
+                    }
+                    Some(_) => {
+                        continue;
+                    }
                     None => {
                         if self.read_buffer.is_empty() {
                             return Ok(0);
@@ -161,6 +167,7 @@ impl std::io::Read for SshChannel {
             for i in 0..len {
                 buf[i] = self.read_buffer.pop_front().unwrap();
             }
+            eprintln!("[SSH READ] Returning {} bytes from buffer (buffer has {} bytes left)", len, self.read_buffer.len());
             Ok(len)
             })
         })
