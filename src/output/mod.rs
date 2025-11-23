@@ -1,6 +1,5 @@
 pub mod progress;
 pub mod itemize;
-pub mod stats;
 pub mod verbose;
 pub mod logger;
 

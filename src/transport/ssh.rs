@@ -2,6 +2,7 @@ use std::net::TcpStream;
 use std::path::PathBuf;
 use ssh2::{Channel, Session};
 use crate::error::{RsyncError, Result};
+use std::io::Write;
 
 
 pub enum AuthMethod {
@@ -11,6 +12,20 @@ pub enum AuthMethod {
     Password(String),
 
     Agent,
+}
+
+pub fn prompt_for_password(username: &str, host: &str) -> Result<String> {
+    print!("{}@{}'s password: ", username, host);
+    std::io::stdout().flush().map_err(|e| RsyncError::Io(e))?;
+
+    let password = rpassword::read_password()
+        .map_err(|e| RsyncError::Auth(format!("Failed to read password: {}", e)))?;
+
+    if password.is_empty() {
+        return Err(RsyncError::Auth("Password cannot be empty".to_string()));
+    }
+
+    Ok(password)
 }
 
 
