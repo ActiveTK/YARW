@@ -197,3 +197,45 @@ pub fn read_shortint<R: Read>(reader: &mut R) -> Result<u16> {
     let b2 = reader.read_u8()? as u16;
     Ok(b1 | (b2 << 8))
 }
+
+pub fn write_vstring<W: Write>(writer: &mut W, s: &str) -> Result<()> {
+    let bytes = s.as_bytes();
+    let len = bytes.len();
+
+    if len > 0x7FFF {
+        return Err(RsyncError::Other(format!("vstring too long: {}", len)));
+    }
+
+    if len > 0x7F {
+        writer.write_u8((len / 0x100 + 0x80) as u8)?;
+    }
+    writer.write_u8((len & 0xFF) as u8)?;
+
+    if len > 0 {
+        writer.write_all(bytes)?;
+    }
+
+    Ok(())
+}
+
+pub fn read_vstring<R: Read>(reader: &mut R) -> Result<String> {
+    let mut len = reader.read_u8()? as usize;
+
+    if (len & 0x80) != 0 {
+        len = (len & !0x80) * 0x100 + reader.read_u8()? as usize;
+    }
+
+    if len > 0x7FFF {
+        return Err(RsyncError::Other(format!("vstring too long: {}", len)));
+    }
+
+    if len == 0 {
+        return Ok(String::new());
+    }
+
+    let mut buf = vec![0u8; len];
+    reader.read_exact(&mut buf)?;
+
+    String::from_utf8(buf)
+        .map_err(|e| RsyncError::Other(format!("Invalid UTF-8 in vstring: {}", e)))
+}

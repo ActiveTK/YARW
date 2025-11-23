@@ -169,6 +169,25 @@ impl RemoteTransport {
                             let _checksum_seed = i32::from_le_bytes(checksum_seed_bytes);
                             verbose.print_verbose(&format!("Checksum seed: {}", _checksum_seed));
 
+                            if negotiated_version >= 30 {
+                                use crate::protocol::{write_vstring, read_vstring};
+
+                                verbose.print_verbose("Negotiating algorithms...");
+
+                                write_vstring(&mut channel, "md5 md4")?;
+                                let _remote_checksum_list = read_vstring(&mut channel)?;
+                                verbose.print_verbose(&format!("Checksum algorithm negotiated: md5"));
+
+                                if self.options.compress {
+                                    write_vstring(&mut channel, "zlib")?;
+                                    let _remote_compress_list = read_vstring(&mut channel)?;
+                                    verbose.print_verbose(&format!("Compression algorithm negotiated: zlib"));
+                                } else {
+                                    write_vstring(&mut channel, "")?;
+                                    let _remote_compress_list = read_vstring(&mut channel)?;
+                                }
+                            }
+
                             verbose.print_verbose("Exchanging exclusion lists...");
                             let exclude_list = ExcludeList::new();
                             exclude_list.send(&mut channel)?;
