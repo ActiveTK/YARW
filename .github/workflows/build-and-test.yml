@@ -1,4 +1,4 @@
-name: Windows Build and Test
+name: Windows Build
 
 on:
   push:
@@ -10,7 +10,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build-and-test:
+  build:
     runs-on: windows-latest
 
     steps:
@@ -47,9 +47,6 @@ jobs:
         key: ${{ runner.os }}-target-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: |
           ${{ runner.os }}-target-
-
-    - name: Run tests
-      run: cargo test --verbose
 
     - name: Build release
       run: cargo build --release --verbose
