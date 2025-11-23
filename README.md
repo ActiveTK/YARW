@@ -53,13 +53,13 @@ cargo build --release
 
 ```bash
 # Sync a directory (recursive)
-rsync -rv source/ destination/
+yarw -rv source/ destination/
 
 # Archive mode (recursive + preserve links)
-rsync -av source/ destination/
+yarw -av source/ destination/
 
 # Show progress during transfer
-rsync -av --progress source/ destination/
+yarw -av --progress source/ destination/
 ```
 
 ### And more options
