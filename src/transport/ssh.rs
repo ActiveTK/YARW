@@ -4,8 +4,7 @@ use std::io::Write;
 use std::sync::Arc;
 use russh::*;
 use russh_keys::*;
-use tokio::io::{AsyncRead, AsyncWrite};
-use std::pin::Pin;
+use std::collections::VecDeque;
 
 pub enum AuthMethod {
     PublicKey(PathBuf),
@@ -111,115 +110,155 @@ impl SshTransport {
             .await
             .map_err(|e| RsyncError::RemoteExec(format!("Failed to execute command: {}", e)))?;
 
-        Ok(SshChannel { channel })
+        Ok(SshChannel {
+            channel,
+            read_buffer: VecDeque::new(),
+        })
     }
 }
 
 pub struct SshChannel {
     channel: russh::Channel<russh::client::Msg>,
+    read_buffer: VecDeque<u8>,
 }
 
 impl std::io::Read for SshChannel {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let rt = tokio::runtime::Handle::try_current()
-            .or_else(|_| {
-                tokio::runtime::Runtime::new().map(|rt| rt.handle().clone())
-            })
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        if buf.is_empty() {
+            return Ok(0);
+        }
 
-        rt.block_on(async {
-            use tokio::io::AsyncReadExt;
-            self.channel.read(buf).await
+        let handle = tokio::runtime::Handle::try_current()
+            .expect("must be called from within a tokio runtime");
+
+        tokio::task::block_in_place(|| {
+            handle.block_on(async {
+            while self.read_buffer.is_empty() {
+                match self.channel.wait().await {
+                    Some(ChannelMsg::Data { ref data }) => {
+                        self.read_buffer.extend(data.iter().copied());
+                    }
+                    Some(ChannelMsg::Eof) => {
+                        return Ok(0);
+                    }
+                    Some(ChannelMsg::ExitStatus { exit_status: _ }) => {
+                        if self.read_buffer.is_empty() {
+                            return Ok(0);
+                        }
+                        break;
+                    }
+                    Some(_) => continue,
+                    None => {
+                        if self.read_buffer.is_empty() {
+                            return Ok(0);
+                        }
+                        break;
+                    }
+                }
+            }
+
+            let len = buf.len().min(self.read_buffer.len());
+            for i in 0..len {
+                buf[i] = self.read_buffer.pop_front().unwrap();
+            }
+            Ok(len)
+            })
         })
     }
 }
 
 impl std::io::Write for SshChannel {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let rt = tokio::runtime::Handle::try_current()
-            .or_else(|_| {
-                tokio::runtime::Runtime::new().map(|rt| rt.handle().clone())
-            })
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        let handle = tokio::runtime::Handle::try_current()
+            .expect("must be called from within a tokio runtime");
 
-        rt.block_on(async {
-            use tokio::io::AsyncWriteExt;
-            self.channel.write(buf).await
+        tokio::task::block_in_place(|| {
+            handle.block_on(async {
+                self.channel
+                    .data(buf)
+                    .await
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                Ok(buf.len())
+            })
         })
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        let rt = tokio::runtime::Handle::try_current()
-            .or_else(|_| {
-                tokio::runtime::Runtime::new().map(|rt| rt.handle().clone())
-            })
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-
-        rt.block_on(async {
-            use tokio::io::AsyncWriteExt;
-            self.channel.flush().await
-        })
+        Ok(())
     }
 }
 
 impl SshChannel {
     pub fn close(&mut self) -> Result<()> {
-        let rt = tokio::runtime::Handle::try_current()
-            .or_else(|_| {
-                tokio::runtime::Runtime::new().map(|rt| rt.handle().clone())
-            })
-            .map_err(|e| RsyncError::Network(e.to_string()))?;
+        let handle = tokio::runtime::Handle::try_current()
+            .expect("must be called from within a tokio runtime");
 
-        rt.block_on(async {
-            self.channel
-                .eof()
-                .await
-                .map_err(|e| RsyncError::Network(e.to_string()))?;
-            Ok(())
+        tokio::task::block_in_place(|| {
+            handle.block_on(async {
+                self.channel
+                    .eof()
+                    .await
+                    .map_err(|e| RsyncError::Network(e.to_string()))?;
+                Ok(())
+            })
         })
     }
 
     pub fn wait_close(&mut self) -> Result<()> {
-        let rt = tokio::runtime::Handle::try_current()
-            .or_else(|_| {
-                tokio::runtime::Runtime::new().map(|rt| rt.handle().clone())
-            })
-            .map_err(|e| RsyncError::Network(e.to_string()))?;
+        let handle = tokio::runtime::Handle::try_current()
+            .expect("must be called from within a tokio runtime");
 
-        rt.block_on(async {
-            self.channel
-                .wait()
-                .await
-                .map_err(|e| RsyncError::Network(e.to_string()))?;
-            Ok(())
+        tokio::task::block_in_place(|| {
+            handle.block_on(async {
+                while let Some(_msg) = self.channel.wait().await {
+                }
+                Ok(())
+            })
         })
     }
 
     pub fn stderr(&mut self) -> SshChannelStderr {
         SshChannelStderr {
             channel: &mut self.channel,
+            stderr_buffer: VecDeque::new(),
         }
     }
 }
 
 pub struct SshChannelStderr<'a> {
     channel: &'a mut russh::Channel<russh::client::Msg>,
+    stderr_buffer: VecDeque<u8>,
 }
 
 impl<'a> std::io::Read for SshChannelStderr<'a> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let rt = tokio::runtime::Handle::try_current()
-            .or_else(|_| {
-                tokio::runtime::Runtime::new().map(|rt| rt.handle().clone())
-            })
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        if buf.is_empty() {
+            return Ok(0);
+        }
 
-        rt.block_on(async {
-            use tokio::io::AsyncReadExt;
-            match self.channel.wait().await {
-                Ok(_) => Ok(0),
-                Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
+        let handle = tokio::runtime::Handle::try_current()
+            .expect("must be called from within a tokio runtime");
+
+        tokio::task::block_in_place(|| {
+            handle.block_on(async {
+            while self.stderr_buffer.is_empty() {
+                match self.channel.wait().await {
+                    Some(ChannelMsg::ExtendedData { ref data, ext: 1 }) => {
+                        self.stderr_buffer.extend(data.iter().copied());
+                    }
+                    Some(ChannelMsg::Eof) | None => {
+                        return Ok(0);
+                    }
+                    Some(_) => continue,
+                }
             }
+
+            let len = buf.len().min(self.stderr_buffer.len());
+            for i in 0..len {
+                buf[i] = self.stderr_buffer.pop_front().unwrap();
+            }
+            Ok(len)
+            })
         })
     }
 }
