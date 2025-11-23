@@ -54,8 +54,8 @@ impl From<anyhow::Error> for RsyncError {
     }
 }
 
-impl From<ssh2::Error> for RsyncError {
-    fn from(err: ssh2::Error) -> Self {
+impl From<russh::Error> for RsyncError {
+    fn from(err: russh::Error) -> Self {
         RsyncError::Network(err.to_string())
     }
 }

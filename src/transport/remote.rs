@@ -56,11 +56,14 @@ impl RemoteTransport {
             let mut transport_result: Option<SshTransport> = None;
             let mut last_error: Option<String> = None;
 
+            let rt = tokio::runtime::Runtime::new()
+                .map_err(|e| RsyncError::Network(format!("Failed to create tokio runtime: {}", e)))?;
+
             if let Some(ref rsh_command) = self.options.rsh {
                 let params = parse_ssh_command(rsh_command);
                 if let Some(identity_file) = params.identity_file {
                     verbose.print_verbose(&format!("Trying public key authentication: {}", identity_file.display()));
-                    match SshTransport::connect(&host, port, &username, AuthMethod::PublicKey(identity_file.clone())) {
+                    match rt.block_on(SshTransport::connect(&host, port, &username, AuthMethod::PublicKey(identity_file.clone()))) {
                         Ok(transport) => {
                             verbose.print_verbose("Public key authentication successful.");
                             transport_result = Some(transport);
@@ -75,7 +78,7 @@ impl RemoteTransport {
 
             if transport_result.is_none() {
                 verbose.print_verbose("Trying SSH agent authentication...");
-                match SshTransport::connect(&host, port, &username, AuthMethod::Agent) {
+                match rt.block_on(SshTransport::connect(&host, port, &username, AuthMethod::Agent)) {
                     Ok(transport) => {
                         verbose.print_verbose("SSH agent authentication successful.");
                         transport_result = Some(transport);
@@ -91,7 +94,7 @@ impl RemoteTransport {
                 verbose.print_verbose("Trying password authentication...");
                 match prompt_for_password(&username, &host) {
                     Ok(password) => {
-                        match SshTransport::connect(&host, port, &username, AuthMethod::Password(password)) {
+                        match rt.block_on(SshTransport::connect(&host, port, &username, AuthMethod::Password(password))) {
                             Ok(transport) => {
                                 verbose.print_verbose("Password authentication successful.");
                                 transport_result = Some(transport);
@@ -133,7 +136,7 @@ impl RemoteTransport {
                     let rsync_command_str = format!("rsync {}", rsync_args.join(" "));
                     verbose.print_debug(&format!("Executing remote command: {}", rsync_command_str));
 
-                    match transport.execute(&rsync_command_str) {
+                    match rt.block_on(transport.execute(&rsync_command_str)) {
                         Ok(mut channel) => {
 
                             let mut stream = ProtocolStream::new(&mut channel, PROTOCOL_VERSION_MAX);

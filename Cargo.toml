@@ -20,10 +20,9 @@ lz4 = "1"
 lz4_flex = "0.11"
 globset = "0.4"
 regex = "1"
-ssh2 = "0.9"
-ssh-key = { version = "0.6", features = ["std", "rsa", "encryption"] }
-rsa = { version = "0.9", features = ["pem"] }
-base64 = "0.22"
+russh = "0.45"
+russh-keys = "0.45"
+async-trait = "0.1"
 rayon = "1"
 indicatif = "0.17"
 anyhow = "1"
