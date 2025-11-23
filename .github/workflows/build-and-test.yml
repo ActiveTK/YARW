@@ -2,9 +2,7 @@ name: Windows Build
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches: [ main, dev ]
 
 env:
   CARGO_TERM_COLOR: always
@@ -63,21 +61,18 @@ jobs:
         Copy-Item -Path "target\release\yarw.exe" -Destination "bin\yarw.exe" -Force
       shell: pwsh
 
-    - name: Check for changes
-      id: check_changes
-      run: |
-        git diff --quiet bin/yarw.exe || echo "changed=true" >> $env:GITHUB_OUTPUT
-      shell: pwsh
-      continue-on-error: true
-
     - name: Commit and push binary
-      if: steps.check_changes.outputs.changed == 'true' && github.event_name == 'push'
+      if: github.ref == 'refs/heads/main'
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
         git add bin/yarw.exe
-        git commit -m "Update Windows release binary [skip ci]"
-        git push
+        if (git diff --cached --quiet) {
+          Write-Host "No changes to commit"
+        } else {
+          git commit -m "Update Windows release binary [skip ci]"
+          git push
+        }
       shell: pwsh
 
     - name: Upload artifacts
