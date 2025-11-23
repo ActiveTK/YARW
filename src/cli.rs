@@ -7,7 +7,7 @@ use crate::output::VerboseOutput;
 #[derive(Parser, Debug)]
 #[command(name = "rsync")]
 #[command(author = "YARW: Yet Another Rsync for Windows")]
-#[command(version = "0.1.0")]
+#[command(version)]
 #[command(about = "A file synchronization tool for Windows", long_about = None)]
 #[command(disable_help_flag = true)]
 pub struct Cli {

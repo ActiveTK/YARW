@@ -35,7 +35,7 @@ async fn main() -> Result<()> {
         match output::init_logger(log_file_path) {
             Ok(_) => {
                 verbose.print_basic(&format!("Logging to file: {}", log_file_path.display()));
-                output::log_with_timestamp(&format!("YARW (Yet Another Rsync for Windows) v0.1.0 started"));
+                output::log_with_timestamp(&format!("YARW (Yet Another Rsync for Windows) v{} started", env!("CARGO_PKG_VERSION")));
                 output::log(&format!("Command: rsync {} {}", sources.join(" "), destination));
             }
             Err(e) => {
@@ -45,7 +45,7 @@ async fn main() -> Result<()> {
     }
 
 
-    verbose.print_basic("YARW (Yet Another Rsync for Windows) v0.1.0");
+    verbose.print_basic(&format!("YARW (Yet Another Rsync for Windows) v{}", env!("CARGO_PKG_VERSION")));
     verbose.print_basic(&format!("Verbose level: {}", options.verbose));
 
 

@@ -36,14 +36,13 @@ impl Default for SshConnectionParams {
 pub fn parse_ssh_command(command: &str) -> SshConnectionParams {
     let mut params = SshConnectionParams::default();
 
-
-    let parts: Vec<&str> = command.split_whitespace().collect();
+    let parts = tokenize_command(command);
 
     let mut i = 0;
     while i < parts.len() {
-        let part = parts[i];
+        let part = &parts[i];
 
-        match part {
+        match part.as_str() {
             "ssh" => {
 
             }
@@ -59,7 +58,8 @@ pub fn parse_ssh_command(command: &str) -> SshConnectionParams {
             "-i" | "--identity" => {
 
                 if i + 1 < parts.len() {
-                    let path = parts[i + 1];
+                    let path = &parts[i + 1];
+                    let path = path.trim_matches('"');
 
                     let expanded_path = if path.starts_with("~/") {
                         if let Some(home) = dirs::home_dir() {
@@ -77,14 +77,14 @@ pub fn parse_ssh_command(command: &str) -> SshConnectionParams {
             "-o" => {
 
                 if i + 1 < parts.len() {
-                    params.extra_options.push(parts[i + 1].to_string());
+                    params.extra_options.push(parts[i + 1].clone());
                     i += 1;
                 }
             }
             _ => {
 
                 if part.starts_with('-') {
-                    params.extra_options.push(part.to_string());
+                    params.extra_options.push(part.clone());
                 }
             }
         }
@@ -93,6 +93,43 @@ pub fn parse_ssh_command(command: &str) -> SshConnectionParams {
     }
 
     params
+}
+
+fn tokenize_command(command: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut current_token = String::new();
+    let mut in_quotes = false;
+    let mut chars = command.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        match ch {
+            '\\' if chars.peek() == Some(&'"') => {
+                chars.next();
+                current_token.push('"');
+            }
+            '\\' => {
+                current_token.push('\\');
+            }
+            '"' => {
+                in_quotes = !in_quotes;
+            }
+            ' ' | '\t' if !in_quotes => {
+                if !current_token.is_empty() {
+                    tokens.push(current_token.clone());
+                    current_token.clear();
+                }
+            }
+            _ => {
+                current_token.push(ch);
+            }
+        }
+    }
+
+    if !current_token.is_empty() {
+        tokens.push(current_token);
+    }
+
+    tokens
 }
 
 #[cfg(test)]
@@ -124,5 +161,18 @@ mod tests {
         assert_eq!(params.port, Some(22));
         assert!(params.identity_file.is_some());
         assert_eq!(params.extra_options.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_ssh_quoted_path() {
+        let params = parse_ssh_command(r#"ssh -p 10022 -i "C:\Users\Test User\key.pem""#);
+        assert_eq!(params.port, Some(10022));
+        assert_eq!(params.identity_file, Some(PathBuf::from(r"C:\Users\Test User\key.pem")));
+    }
+
+    #[test]
+    fn test_parse_ssh_escaped_quotes() {
+        let params = parse_ssh_command(r#"ssh -i \"C:\Program Files\ssh\key\""#);
+        assert!(params.identity_file.is_some());
     }
 }

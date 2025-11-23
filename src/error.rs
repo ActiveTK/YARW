@@ -40,10 +40,6 @@ pub enum RsyncError {
 
     #[error("General error: {0}")]
     Other(String),
-
-    #[error("Unknown error")]
-    #[allow(dead_code)]
-    Unknown,
 }
 
 impl From<toml::de::Error> for RsyncError {
