@@ -2,6 +2,8 @@
 
 This document provides comprehensive usage information for YARW, including detailed explanations of all options and features.
 
+For additional questions or issues, please refer to the project repository or ask ChatGPT/Gemini/Claude.
+
 ## Table of Contents
 
 - [Basic Syntax](#basic-syntax)
@@ -1126,7 +1128,3 @@ rsync -av --backup --backup-dir=../old source/ dest/
 
 - See [EXAMPLES.md](EXAMPLES.md) for real-world usage examples
 - See [README.md](../README.md) for project overview
-
----
-
-For additional questions or issues, please refer to the project repository or open an issue on GitHub.
