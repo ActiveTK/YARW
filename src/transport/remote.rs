@@ -139,7 +139,7 @@ impl RemoteTransport {
 
                     match tokio::task::block_in_place(|| handle.block_on(transport.execute(&rsync_command_str))) {
                         Ok(mut channel) => {
-                            use crate::protocol::{CompatFlags, ExcludeList, send_file_list, recv_file_list};
+                            use crate::protocol::{CompatFlags, ExcludeList, send_file_list, recv_file_list, CF_VARINT_FLIST_FLAGS};
 
                             verbose.print_verbose("Negotiating protocol version...");
                             channel.write_all(&PROTOCOL_VERSION_MAX.to_le_bytes())?;
@@ -151,16 +151,20 @@ impl RemoteTransport {
                             let negotiated_version = PROTOCOL_VERSION_MAX.min(remote_version);
                             verbose.print_verbose(&format!("Protocol versions: local={}, remote={}, negotiated={}", PROTOCOL_VERSION_MAX, remote_version, negotiated_version));
 
-                            let compat_flags = if negotiated_version >= 30 {
+                            let (compat_flags, do_negotiated_strings) = if negotiated_version >= 30 {
                                 verbose.print_verbose("Exchanging compatibility flags...");
                                 let flags = CompatFlags::new_for_protocol_31();
                                 flags.write(&mut channel)?;
 
-                                let _remote_compat_flags = CompatFlags::read(&mut channel)?;
-                                verbose.print_verbose("Compatibility flags exchanged.");
-                                flags
+                                let remote_compat_flags = CompatFlags::read(&mut channel)?;
+                                verbose.print_verbose(&format!("Remote compat flags: 0x{:02x}", remote_compat_flags.flags));
+
+                                let do_neg_strings = remote_compat_flags.has_flag(CF_VARINT_FLIST_FLAGS);
+                                verbose.print_verbose(&format!("Negotiated strings: {}", do_neg_strings));
+
+                                (flags, do_neg_strings)
                             } else {
-                                CompatFlags { flags: 0 }
+                                (CompatFlags { flags: 0 }, false)
                             };
 
                             verbose.print_verbose("Receiving checksum seed...");
@@ -169,23 +173,24 @@ impl RemoteTransport {
                             let _checksum_seed = i32::from_le_bytes(checksum_seed_bytes);
                             verbose.print_verbose(&format!("Checksum seed: {}", _checksum_seed));
 
-                            if negotiated_version >= 30 {
+                            if negotiated_version >= 30 && do_negotiated_strings {
                                 use crate::protocol::{write_vstring, read_vstring};
 
                                 verbose.print_verbose("Negotiating algorithms...");
 
                                 write_vstring(&mut channel, "md5 md4")?;
-                                let _remote_checksum_list = read_vstring(&mut channel)?;
-                                verbose.print_verbose(&format!("Checksum algorithm negotiated: md5"));
+                                verbose.print_verbose("Sent checksum list: md5 md4");
 
-                                if self.options.compress {
-                                    write_vstring(&mut channel, "zlib")?;
-                                    let _remote_compress_list = read_vstring(&mut channel)?;
-                                    verbose.print_verbose(&format!("Compression algorithm negotiated: zlib"));
-                                } else {
-                                    write_vstring(&mut channel, "")?;
-                                    let _remote_compress_list = read_vstring(&mut channel)?;
-                                }
+                                write_vstring(&mut channel, "zlib")?;
+                                verbose.print_verbose("Sent compression list: zlib");
+
+                                let remote_checksum_list = read_vstring(&mut channel)?;
+                                verbose.print_verbose(&format!("Received checksum list: {}", remote_checksum_list));
+
+                                let remote_compress_list = read_vstring(&mut channel)?;
+                                verbose.print_verbose(&format!("Received compression list: {}", remote_compress_list));
+                            } else if negotiated_version >= 30 {
+                                verbose.print_verbose("Using default algorithms (no negotiation)");
                             }
 
                             verbose.print_verbose("Exchanging exclusion lists...");
