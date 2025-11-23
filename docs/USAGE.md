@@ -8,6 +8,7 @@ This document provides comprehensive usage information for YARW, including detai
 - [Common Usage Patterns](#common-usage-patterns)
 - [Option Reference](#option-reference)
   - [Basic Options](#basic-options)
+  - [Windows Unsupported Options](#windows-unsupported-options)
   - [Transfer Options](#transfer-options)
   - [Delete Options](#delete-options)
   - [Filtering Options](#filtering-options)
@@ -15,6 +16,8 @@ This document provides comprehensive usage information for YARW, including detai
   - [Backup Options](#backup-options)
   - [Control Options](#control-options)
   - [Checksum Options](#checksum-options)
+  - [Remote Transfer Options](#remote-transfer-options)
+  - [Daemon Mode Options](#daemon-mode-options)
 - [Advanced Usage](#advanced-usage)
 - [Performance Tuning](#performance-tuning)
 - [Troubleshooting](#troubleshooting)
@@ -124,11 +127,16 @@ Archive mode - the most commonly used option. On Windows, equivalent to `-rl`:
 - `-r`: Recursive
 - `-l`: Copy symlinks as symlinks
 
-On Unix, `-a` would also include `-ptgoD` (permissions, times, group, owner, devices), but these are not supported on Windows.
+On Unix, `-a` would also include `-ptgoD` (permissions, times, group, owner, devices), but **YARW's `-a` on Windows does NOT automatically enable these options** because they are not supported on Windows. If you explicitly use `-p`, `-t`, `-g`, `-o`, or `-D` options, they will be accepted but will display a warning and be ignored.
 
 ```bash
 rsync -a source/ dest/
 ```
+
+**Windows-specific behavior:**
+- `-a` = `-rl` (not `-rlptgoD` like on Unix)
+- Options `-p`, `-t`, `-g`, `-o`, `-D` can be specified but will be ignored with a warning
+- Use `-a` for most common synchronization tasks on Windows
 
 #### `-r, --recursive`
 
@@ -201,6 +209,84 @@ rsync -aH source/ dest/
 ```
 
 **Note:** Partial support on Windows.
+
+#### `--help`
+
+Display help information:
+
+```bash
+rsync --help
+```
+
+Shows a summary of all available options and their descriptions.
+
+### Windows Unsupported Options
+
+The following options are parsed but not supported on Windows. Using these options will display a warning message and they will be ignored:
+
+#### `-p, --perms`
+
+Preserve file permissions.
+
+```bash
+rsync -ap source/ dest/
+```
+
+**Windows Note:** File permissions are handled differently on Windows (ACLs vs Unix permissions). This option is ignored on Windows and will display a warning.
+
+#### `-o, --owner`
+
+Preserve file owner.
+
+```bash
+rsync -ao source/ dest/
+```
+
+**Windows Note:** Not supported on Windows. Will display a warning and be ignored.
+
+#### `-g, --group`
+
+Preserve file group.
+
+```bash
+rsync -ag source/ dest/
+```
+
+**Windows Note:** Not supported on Windows. Will display a warning and be ignored.
+
+#### `-t, --times`
+
+Preserve modification times.
+
+```bash
+rsync -at source/ dest/
+```
+
+**Windows Note:** Not supported on Windows. Will display a warning and be ignored.
+
+#### `-D`
+
+Preserve device and special files (equivalent to `--devices --specials`).
+
+```bash
+rsync -aD source/ dest/
+```
+
+**Windows Note:** Not supported on Windows. Will display a warning and be ignored.
+
+#### `--devices`
+
+Preserve device files.
+
+**Windows Note:** Not supported on Windows. Will display a warning and be ignored.
+
+#### `--specials`
+
+Preserve special files.
+
+**Windows Note:** Not supported on Windows. Will display a warning and be ignored.
+
+**Important:** These options are traditionally included in `-a` (archive mode) on Unix systems, but YARW's `-a` on Windows is equivalent to only `-rl` (recursive + links) to avoid unnecessary warnings. You can still use these options explicitly, but they will trigger warnings and be ignored.
 
 ### Transfer Options
 
@@ -710,6 +796,87 @@ rsync -ac --checksum-choice=xxh128 source/ dest/
 - **md4**: Legacy, faster but less secure
 - **blake2**: Modern, cryptographically secure
 - **xxh128**: Fastest, non-cryptographic
+
+### Remote Transfer Options
+
+#### `-e, --rsh=COMMAND`
+
+Specify the remote shell program to use:
+
+```bash
+rsync -av -e "ssh -i /path/to/key" source/ user@host:dest/
+```
+
+Commonly used with SSH for remote transfers.
+
+**SSH Authentication:**
+YARW supports multiple SSH authentication methods:
+1. **SSH Agent** (default): Uses your SSH agent for authentication
+2. **Public Key**: Specify with `-e "ssh -i /path/to/key"`
+3. **Password**: If agent and public key fail, prompts for password
+
+**Example with SSH options:**
+```bash
+rsync -av -e "ssh -p 2222 -i ~/.ssh/id_rsa" source/ user@host:dest/
+```
+
+#### `--rsync-path=PATH`
+
+Specify the path to rsync on the remote machine:
+
+```bash
+rsync -av --rsync-path=/usr/local/bin/rsync source/ user@host:dest/
+```
+
+Useful when rsync is not in the default PATH on the remote system.
+
+### Daemon Mode Options
+
+#### `--daemon`
+
+Run as an rsync daemon:
+
+```bash
+rsync --daemon
+```
+
+Starts rsync in daemon mode, listening for incoming connections.
+
+#### `--address=ADDRESS`
+
+Bind to the specified address when running in daemon mode:
+
+```bash
+rsync --daemon --address=192.168.1.100
+```
+
+#### `--port=PORT`
+
+Specify the TCP port for daemon mode (default: 873):
+
+```bash
+rsync --daemon --port=8873
+```
+
+#### `--config=FILE`
+
+Specify an alternate config file for daemon mode:
+
+```bash
+rsync --daemon --config=/etc/rsyncd.conf
+```
+
+Default is `rsyncd.conf` in the current directory.
+
+#### `--password-file=FILE`
+
+Read daemon password from FILE:
+
+```bash
+rsync -av --password-file=rsync.pwd rsync://user@host/module/
+```
+
+The file should contain only the password.
 
 ## Advanced Usage
 
