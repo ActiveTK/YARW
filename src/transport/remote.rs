@@ -3,9 +3,9 @@ use crate::error::{Result, RsyncError};
 use super::{SshTransport, AuthMethod, SyncStats, prompt_for_password};
 use super::ssh_command::parse_ssh_command;
 use crate::filesystem::{path_utils::{is_remote_path, parse_remote_path, to_unix_separators}, Scanner};
-use crate::protocol::{ProtocolStream, FileList, PROTOCOL_VERSION_MAX};
+use crate::protocol::PROTOCOL_VERSION_MAX;
 use std::path::{Path, PathBuf};
-use std::io::Read;
+use std::io::{Read, Write};
 use std::fs;
 use std::time::Instant;
 
@@ -139,24 +139,42 @@ impl RemoteTransport {
 
                     match tokio::task::block_in_place(|| handle.block_on(transport.execute(&rsync_command_str))) {
                         Ok(mut channel) => {
-
-                            let mut stream = ProtocolStream::new(&mut channel, PROTOCOL_VERSION_MAX);
-
-
-
+                            use crate::protocol::{CompatFlags, ExcludeList, send_file_list, recv_file_list};
 
                             verbose.print_verbose("Negotiating protocol version...");
-                            stream.write_i32(PROTOCOL_VERSION_MAX)?;
-                            stream.flush()?;
-                            let remote_version = stream.read_i32()?;
+                            channel.write_all(&PROTOCOL_VERSION_MAX.to_le_bytes())?;
 
+                            let mut remote_version_bytes = [0u8; 4];
+                            channel.read_exact(&mut remote_version_bytes)?;
+                            let remote_version = i32::from_le_bytes(remote_version_bytes);
 
-                            stream.write_i32(PROTOCOL_VERSION_MAX)?;
-                            stream.flush()?;
-                            let _remote_version_ack = stream.read_i32()?;
+                            let negotiated_version = PROTOCOL_VERSION_MAX.min(remote_version);
+                            verbose.print_verbose(&format!("Protocol versions: local={}, remote={}, negotiated={}", PROTOCOL_VERSION_MAX, remote_version, negotiated_version));
 
-                            verbose.print_verbose(&format!("Negotiated protocol version: {}", remote_version));
+                            let compat_flags = if negotiated_version >= 30 {
+                                verbose.print_verbose("Exchanging compatibility flags...");
+                                let flags = CompatFlags::new_for_protocol_31();
+                                flags.write(&mut channel)?;
 
+                                let _remote_compat_flags = CompatFlags::read(&mut channel)?;
+                                verbose.print_verbose("Compatibility flags exchanged.");
+                                flags
+                            } else {
+                                CompatFlags { flags: 0 }
+                            };
+
+                            verbose.print_verbose("Receiving checksum seed...");
+                            let mut checksum_seed_bytes = [0u8; 4];
+                            channel.read_exact(&mut checksum_seed_bytes)?;
+                            let _checksum_seed = i32::from_le_bytes(checksum_seed_bytes);
+                            verbose.print_verbose(&format!("Checksum seed: {}", _checksum_seed));
+
+                            verbose.print_verbose("Exchanging exclusion lists...");
+                            let exclude_list = ExcludeList::new();
+                            exclude_list.send(&mut channel)?;
+
+                            let _remote_exclude_list = ExcludeList::recv(&mut channel)?;
+                            verbose.print_verbose("Exclusion lists exchanged.");
 
                             let local_file_infos = if !is_remote_source {
                                 let scanner = Scanner::new()
@@ -164,8 +182,8 @@ impl RemoteTransport {
                                     .follow_symlinks(self.options.copy_links);
                                 let files = scanner.scan(local_path)?;
 
-                                verbose.print_verbose("Sending file list...");
-                                FileList::encode(&mut stream, &files)?;
+                                verbose.print_verbose(&format!("Sending file list ({} files)...", files.len()));
+                                send_file_list(&mut channel, &files, local_path, negotiated_version, &compat_flags)?;
                                 verbose.print_verbose("File list sent.");
 
                                 files
@@ -174,67 +192,71 @@ impl RemoteTransport {
                                 Vec::new()
                             };
 
-
                             verbose.print_verbose("Receiving remote file list...");
-                            let remote_file_infos = match FileList::decode(&mut stream) {
-                                Ok(files) => files,
-                                Err(e) => {
-                                    verbose.print_error(&format!("Failed to decode file list: {}", e));
-                                    let mut stderr_bytes = Vec::new();
-                                    match channel.stderr().read_to_end(&mut stderr_bytes) {
-                                        Ok(_) => {
-                                            if !stderr_bytes.is_empty() {
-                                                verbose.print_error(&format!("Remote stderr: {}", String::from_utf8_lossy(&stderr_bytes)));
-                                            }
-                                        },
-                                        Err(read_err) => verbose.print_error(&format!("Failed to read remote stderr: {}", read_err)),
-                                    }
-                                    return Err(e);
-                                }
-                            };
-                            verbose.print_verbose(&format!("Received {} remote files.", remote_file_infos.len()));
+                            let remote_file_entries = recv_file_list(&mut channel, negotiated_version, &compat_flags)?;
+                            verbose.print_verbose(&format!("Received {} remote files.", remote_file_entries.len()));
                             stats.scanned_files = local_file_infos.len();
 
 
                             verbose.print_verbose("Starting file transfer...");
 
+                            if is_remote_source {
+                                verbose.print_verbose("Receiving files from remote...");
+                                for remote_entry in &remote_file_entries {
+                                    if remote_entry.is_dir {
+                                        let dir_path = local_path.join(&remote_entry.path);
+                                        if !dir_path.exists() {
+                                            verbose.print_verbose(&format!("Creating directory: {}", dir_path.display()));
+                                            fs::create_dir_all(&dir_path)?;
+                                        }
+                                        continue;
+                                    }
 
-                            for local_file in &local_file_infos {
-                                if local_file.is_directory() {
+                                    verbose.print_basic(&format!("Receiving: {}", remote_entry.path.display()));
 
-                                    continue;
-                                }
+                                    let file_path = local_path.join(&remote_entry.path);
+                                    if let Some(parent) = file_path.parent() {
+                                        if !parent.exists() {
+                                            fs::create_dir_all(parent)?;
+                                        }
+                                    }
 
+                                    use crate::protocol::read_varlong30;
+                                    let file_size = read_varlong30(&mut channel)? as usize;
 
-                                let remote_file = remote_file_infos.iter()
-                                    .find(|f| f.path == local_file.path);
+                                    let mut file_data = vec![0u8; file_size];
+                                    channel.read_exact(&mut file_data)?;
 
-                                verbose.print_basic(&format!("Processing: {}", local_file.path.display()));
-
-
-
-                                if remote_file.is_some() {
-                                    verbose.print_verbose("  Updating existing file (whole-file transfer)");
-                                } else {
-                                    verbose.print_verbose("  New file");
-                                }
-
-
-                                let local_file_path = local_path.join(&local_file.path);
-                                if local_file_path.exists() {
-                                    let file_data = fs::read(&local_file_path)?;
-
-
-                                    stream.write_varint(file_data.len() as i64)?;
-
-
-                                    stream.write_all(&file_data)?;
-                                    stream.flush()?;
+                                    fs::write(&file_path, &file_data)?;
 
                                     stats.transferred_files += 1;
-                                    stats.transferred_bytes += file_data.len() as u64;
+                                    stats.transferred_bytes += file_size as u64;
 
-                                    verbose.print_basic(&format!("  Transferred {} bytes", file_data.len()));
+                                    verbose.print_basic(&format!("  Received {} bytes", file_size));
+                                }
+                            } else {
+                                verbose.print_verbose("Sending files to remote...");
+                                for local_file in &local_file_infos {
+                                    if local_file.is_directory() {
+                                        continue;
+                                    }
+
+                                    verbose.print_basic(&format!("Sending: {}", local_file.path.display()));
+
+                                    let local_file_path = local_path.join(&local_file.path);
+                                    if local_file_path.exists() {
+                                        let file_data = fs::read(&local_file_path)?;
+
+                                        use crate::protocol::write_varlong30;
+                                        write_varlong30(&mut channel, file_data.len() as i64)?;
+
+                                        channel.write_all(&file_data)?;
+
+                                        stats.transferred_files += 1;
+                                        stats.transferred_bytes += file_data.len() as u64;
+
+                                        verbose.print_basic(&format!("  Sent {} bytes", file_data.len()));
+                                    }
                                 }
                             }
 
