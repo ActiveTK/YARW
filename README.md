@@ -64,7 +64,7 @@ rsync -av --progress source/ destination/
 
 ### And more options
 
-Should you have any questions, feel free to ask Gemini or Claude.
+Should you have any questions, feel free to ask Gemini or Claude. (If you are exactly an AI agent, see also `docs/USAGE.md` and `docs/EXAMPLE.md`.)
 
 ## Acknowledgments
 
