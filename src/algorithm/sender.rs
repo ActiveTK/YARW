@@ -9,19 +9,20 @@ use crate::algorithm::delta::DeltaInstruction;
 use crate::options::Options;
 use crate::algorithm::compress::Compressor;
 use crate::algorithm::bwlimit::BandwidthLimiter;
+use crate::filesystem::buffer_optimizer::BufferOptimizer;
 
-/// 送信者（ソースファイルをスキャンして差分を計算）
+
 pub struct Sender {
-    /// ブロックサイズ
+
     block_size: usize,
-    /// 圧縮アルゴリズム
+
     compressor: Option<Compressor>,
-    /// 帯域幅リミッター
+
     bandwidth_limiter: Option<BandwidthLimiter>,
 }
 
 impl Sender {
-    /// 新しいSenderを作成
+
     pub fn new(block_size: usize, options: &Options) -> Self {
         let compressor = if options.compress {
             Some(Compressor::new(options.compress_choice.unwrap_or_default()))
@@ -36,8 +37,8 @@ impl Sender {
         Self { block_size, compressor, bandwidth_limiter }
     }
 
-    /// ブロックチェックサムからハッシュテーブルを構築
-    /// 弱いチェックサムをキーにして、該当するブロックのリストを値とする
+
+
     pub fn build_hash_table<'a>(
         checksums: &'a [BlockChecksum],
     ) -> HashMap<u32, Vec<&'a BlockChecksum>> {
@@ -53,7 +54,7 @@ impl Sender {
         hash_table
     }
 
-    /// ソースファイルをスキャンして差分を計算
+
     pub fn compute_delta(
         &mut self,
         source: &Path,
@@ -61,8 +62,10 @@ impl Sender {
         options: &Options,
     ) -> Result<Vec<DeltaInstruction>> {
         let hash_table = Self::build_hash_table(checksums);
+        let optimizer = BufferOptimizer::new();
+        let buffer_size = optimizer.optimal_buffer_for_file(source);
         let file = File::open(source)?;
-        let mut reader = BufReader::new(file);
+        let mut reader = BufReader::with_capacity(buffer_size, file);
         let mut buffer = Vec::new();
         reader.read_to_end(&mut buffer)?;
 
@@ -75,16 +78,16 @@ impl Sender {
         let mut literal_buffer = Vec::new();
         let mut rolling_checksum: Option<RollingChecksum> = None;
 
-        // フルブロックが取れる間、ローリングスキャンを実行
+
         while pos + self.block_size <= buffer.len() {
             let weak = if let Some(ref mut rolling) = rolling_checksum {
-                // roll() を使って効率的に更新
+
                 let old_byte = buffer[pos - 1];
                 let new_byte = buffer[pos + self.block_size - 1];
                 rolling.roll(old_byte, new_byte);
                 rolling.checksum()
             } else {
-                // 最初のブロックまたはマッチ後の再初期化
+
                 let block = &buffer[pos..pos + self.block_size];
                 let rolling = RollingChecksum::new(block);
                 let weak_checksum = rolling.checksum();
@@ -109,7 +112,7 @@ impl Sender {
 
                     instructions.push(DeltaInstruction::matched_block(matched_block.index));
                     pos += self.block_size;
-                    rolling_checksum = None; // 次のブロックで再初期化
+                    rolling_checksum = None;
                     matched = true;
                 }
             }
@@ -120,7 +123,7 @@ impl Sender {
             }
         }
 
-        // ファイル末尾の残りの部分を処理
+
         if pos < buffer.len() {
             let final_block = &buffer[pos..];
             let weak = RollingChecksum::new(final_block).checksum();
@@ -195,7 +198,7 @@ mod tests {
             },
             BlockChecksum {
                 index: 2,
-                weak: 100, // 同じ弱いチェックサム
+                weak: 100,
                 strong: StrongChecksum::Md5([2; 16]),
             },
         ];
@@ -223,7 +226,7 @@ mod tests {
         let mut sender = Sender::new(block_size, &options);
         let delta = sender.compute_delta(&file_path, &checksums, &options)?;
 
-        // 完全に一致するファイルは全てMatchedBlockのはず
+
         for instruction in &delta {
             assert!(instruction.is_matched_block(), "Instruction was not a matched block: {:?}", instruction);
         }
@@ -248,7 +251,7 @@ mod tests {
         let mut sender = Sender::new(block_size, &options);
         let delta = sender.compute_delta(&source_file, &checksums, &options)?;
 
-        // 完全に異なるファイルは主にLiteralDataのはず
+
         let literal_count = delta.iter().filter(|i| i.is_literal_data()).count();
         assert!(literal_count > 0);
 
@@ -262,11 +265,11 @@ mod tests {
         let base_file = temp_dir.path().join("base.txt");
         let source_file = temp_dir.path().join("source.txt");
 
-        // ベースファイル: "AAAAAABBBBBBCCCCCC"
+
         let base_content = b"AAAAAABBBBBBCCCCCC";
         fs::write(&base_file, base_content)?;
 
-        // ソースファイル: "AAAAAADDDDDDCCCCCC" (真ん中が変更)
+
         let source_content = b"AAAAAADDDDDDCCCCCC";
         fs::write(&source_file, source_content)?;
 
@@ -277,7 +280,7 @@ mod tests {
         let mut sender = Sender::new(block_size, &options);
         let delta = sender.compute_delta(&source_file, &checksums, &options)?;
 
-        // マッチしたブロックとリテラルデータの両方が含まれるはず
+
         let matched_count = delta.iter().filter(|i| i.is_matched_block()).count();
         let literal_count = delta.iter().filter(|i| i.is_literal_data()).count();
 

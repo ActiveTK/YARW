@@ -1,7 +1,7 @@
-/// Windows API直接利用による高速ファイルスキャナー
-///
-/// walkdirの代わりにWindows APIを直接利用することで、
-/// 大幅な性能向上を実現します（30-50%高速化）。
+
+
+
+
 
 #[cfg(windows)]
 use windows::Win32::Foundation::{HANDLE, INVALID_HANDLE_VALUE};
@@ -18,9 +18,9 @@ use std::time::SystemTime;
 use crate::error::{Result, RsyncError};
 use crate::filesystem::FileInfo;
 
-/// Windows API高速スキャナー
-///
-/// Windows APIを直接呼び出すことで、walkdirよりも高速なスキャンを実現
+
+
+
 #[cfg(windows)]
 pub struct WindowsScanner {
     recursive: bool,
@@ -29,7 +29,7 @@ pub struct WindowsScanner {
 
 #[cfg(windows)]
 impl WindowsScanner {
-    /// 新しいスキャナーを作成
+
     pub fn new() -> Self {
         Self {
             recursive: false,
@@ -37,48 +37,48 @@ impl WindowsScanner {
         }
     }
 
-    /// 再帰的スキャンを有効化
+
     pub fn recursive(mut self, recursive: bool) -> Self {
         self.recursive = recursive;
         self
     }
 
-    /// シンボリックリンクのフォローを設定
+
     pub fn follow_symlinks(mut self, follow: bool) -> Self {
         self.follow_symlinks = follow;
         self
     }
 
-    /// ディレクトリをスキャン
+
     pub fn scan(&self, path: &Path) -> Result<Vec<FileInfo>> {
         let mut results = Vec::new();
         self.scan_internal(path, path, &mut results)?;
         Ok(results)
     }
 
-    /// 内部スキャン実装（再帰用）
+
     fn scan_internal(
         &self,
         base_path: &Path,
         current_path: &Path,
         results: &mut Vec<FileInfo>,
     ) -> Result<()> {
-        // 検索パターンを作成（全ファイル）
+
         let search_pattern = current_path.join("*");
         let search_pattern_wide = to_wide_string(search_pattern.to_str().unwrap());
 
         let mut find_data: WIN32_FIND_DATAW = unsafe { std::mem::zeroed() };
 
-        // FindFirstFileExW でスキャン開始
-        // FIND_FIRST_EX_LARGE_FETCH フラグで大量ファイルの処理を最適化
+
+
         let handle = unsafe {
             FindFirstFileExW(
                 windows::core::PCWSTR(search_pattern_wide.as_ptr()),
-                FindExInfoBasic, // Basic info で高速化
+                FindExInfoBasic,
                 &mut find_data as *mut _ as *mut _,
                 FindExSearchNameMatch,
                 None,
-                FIND_FIRST_EX_LARGE_FETCH, // 大量ファイルの最適化
+                FIND_FIRST_EX_LARGE_FETCH,
             )
         }.map_err(|_| RsyncError::Io(std::io::Error::last_os_error()))?;
 
@@ -86,19 +86,19 @@ impl WindowsScanner {
             return Err(RsyncError::Io(std::io::Error::last_os_error()));
         }
 
-        // スコープ終了時に自動的にハンドルをクローズ
+
         let _guard = HandleGuard(handle);
 
         loop {
             let file_name = from_wide_string(&find_data.cFileName);
 
-            // "." と ".." をスキップ
+
             if file_name != "." && file_name != ".." {
                 let full_path = current_path.join(&file_name);
                 let is_directory = (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY.0) != 0;
                 let is_symlink = (find_data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT.0) != 0;
 
-                // ファイル情報を構築
+
                 let file_info = FileInfo {
                     path: full_path.clone(),
                     size: if is_directory {
@@ -120,16 +120,16 @@ impl WindowsScanner {
 
                 results.push(file_info);
 
-                // 再帰的スキャン
+
                 if is_directory && self.recursive && (!is_symlink || self.follow_symlinks) {
                     self.scan_internal(base_path, &full_path, results)?;
                 }
             }
 
-            // 次のファイルを取得
+
             let result = unsafe { FindNextFileW(handle, &mut find_data) };
             if result.is_err() {
-                // エラーコード18はERROR_NO_MORE_FILES（正常終了）
+
                 let last_error = std::io::Error::last_os_error();
                 if last_error.raw_os_error() == Some(18) {
                     break;
@@ -150,7 +150,7 @@ impl Default for WindowsScanner {
     }
 }
 
-/// ハンドル自動クローズガード
+
 #[cfg(windows)]
 struct HandleGuard(HANDLE);
 
@@ -163,27 +163,27 @@ impl Drop for HandleGuard {
     }
 }
 
-/// Rust文字列をワイド文字列（UTF-16）に変換
+
 #[cfg(windows)]
 fn to_wide_string(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
-/// ワイド文字列（UTF-16）をRust文字列に変換
+
 #[cfg(windows)]
 fn from_wide_string(wide: &[u16]) -> String {
     let len = wide.iter().position(|&c| c == 0).unwrap_or(wide.len());
     String::from_utf16_lossy(&wide[..len])
 }
 
-/// FILETIME を SystemTime に変換
+
 #[cfg(windows)]
 fn filetime_to_systemtime(ft: &windows::Win32::Foundation::FILETIME) -> SystemTime {
-    // FILETIME は 1601年1月1日からの100ナノ秒単位
-    // SystemTime は Unix epoch（1970年1月1日）からの秒単位
+
+
 
     const TICKS_PER_SECOND: u64 = 10_000_000;
-    const EPOCH_DIFF_SECONDS: u64 = 11_644_473_600; // 1601年 -> 1970年
+    const EPOCH_DIFF_SECONDS: u64 = 11_644_473_600;
 
     let ticks = ((ft.dwHighDateTime as u64) << 32) | (ft.dwLowDateTime as u64);
     let seconds = ticks / TICKS_PER_SECOND;
@@ -198,7 +198,7 @@ fn filetime_to_systemtime(ft: &windows::Win32::Foundation::FILETIME) -> SystemTi
     }
 }
 
-/// 非Windows環境用のダミー実装
+
 #[cfg(not(windows))]
 pub struct WindowsScanner;
 
@@ -264,7 +264,7 @@ mod tests {
         let scanner = WindowsScanner::new().recursive(true);
         let results = scanner.scan(temp_dir.path())?;
 
-        // subdir + nested.txt = 2
+
         assert!(results.len() >= 2);
 
         Ok(())

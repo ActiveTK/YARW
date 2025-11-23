@@ -1,68 +1,68 @@
-/// デルタ指示（送信側から受信側への指示）
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeltaInstruction {
-    /// 基準ファイルのブロックをコピー
-    /// index: 基準ファイルのブロックインデックス
+
+
     MatchedBlock { index: u32 },
 
-    /// 新しいデータ（リテラルデータ）
-    /// data: 送信する実際のバイトデータ
+
+
     LiteralData { data: Vec<u8> },
 }
 
 impl DeltaInstruction {
-    /// MatchedBlock の作成
+
     pub fn matched_block(index: u32) -> Self {
         DeltaInstruction::MatchedBlock { index }
     }
 
-    /// LiteralData の作成
+
     pub fn literal_data(data: Vec<u8>) -> Self {
         DeltaInstruction::LiteralData { data }
     }
 
-    /// データサイズを取得（転送量の推定用）
+
     #[allow(dead_code)]
     pub fn size(&self) -> usize {
         match self {
             DeltaInstruction::MatchedBlock { .. } => {
-                // ブロック参照は4バイト（インデックスのみ）
+
                 4
             }
             DeltaInstruction::LiteralData { data } => {
-                // リテラルデータはデータ長 + データ本体
+
                 4 + data.len()
             }
         }
     }
 
-    /// MatchedBlock かどうか
+
     #[allow(dead_code)]
     pub fn is_matched_block(&self) -> bool {
         matches!(self, DeltaInstruction::MatchedBlock { .. })
     }
 
-    /// LiteralData かどうか
+
     #[allow(dead_code)]
     pub fn is_literal_data(&self) -> bool {
         matches!(self, DeltaInstruction::LiteralData { .. })
     }
 }
 
-/// デルタ指示リストの統計情報
+
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct DeltaStats {
-    /// マッチしたブロック数
+
     pub matched_blocks: usize,
-    /// リテラルデータのバイト数
+
     pub literal_bytes: usize,
-    /// 総転送サイズ（推定）
+
     pub total_transfer_size: usize,
 }
 
 impl DeltaStats {
-    /// デルタ指示リストから統計情報を計算
+
     #[allow(dead_code)]
     pub fn from_instructions(instructions: &[DeltaInstruction]) -> Self {
         let mut matched_blocks = 0;
@@ -89,7 +89,7 @@ impl DeltaStats {
         }
     }
 
-    /// 圧縮率を計算（0.0 - 1.0）
+
     #[allow(dead_code)]
     pub fn compression_ratio(&self, original_size: usize) -> f64 {
         if original_size == 0 {
@@ -109,7 +109,7 @@ mod tests {
         assert_eq!(matched.size(), 4);
 
         let literal = DeltaInstruction::literal_data(vec![1, 2, 3, 4, 5]);
-        assert_eq!(literal.size(), 9); // 4 (length) + 5 (data)
+        assert_eq!(literal.size(), 9);
     }
 
     #[test]
@@ -134,7 +134,7 @@ mod tests {
         let stats = DeltaStats::from_instructions(&instructions);
         assert_eq!(stats.matched_blocks, 3);
         assert_eq!(stats.literal_bytes, 0);
-        assert_eq!(stats.total_transfer_size, 12); // 3 * 4 bytes
+        assert_eq!(stats.total_transfer_size, 12);
     }
 
     #[test]
@@ -147,7 +147,7 @@ mod tests {
         let stats = DeltaStats::from_instructions(&instructions);
         assert_eq!(stats.matched_blocks, 0);
         assert_eq!(stats.literal_bytes, 5);
-        assert_eq!(stats.total_transfer_size, 13); // (4 + 3) + (4 + 2)
+        assert_eq!(stats.total_transfer_size, 13);
     }
 
     #[test]
@@ -162,7 +162,7 @@ mod tests {
         let stats = DeltaStats::from_instructions(&instructions);
         assert_eq!(stats.matched_blocks, 2);
         assert_eq!(stats.literal_bytes, 7);
-        assert_eq!(stats.total_transfer_size, 23); // 4 + (4+5) + 4 + (4+2)
+        assert_eq!(stats.total_transfer_size, 23);
     }
 
     #[test]
@@ -175,8 +175,8 @@ mod tests {
         let stats = DeltaStats::from_instructions(&instructions);
         let original_size = 1000;
 
-        // 転送サイズは8バイト、オリジナルは1000バイト
-        // 圧縮率 = 1.0 - (8 / 1000) = 0.992
+
+
         let ratio = stats.compression_ratio(original_size);
         assert!((ratio - 0.992).abs() < 0.001);
     }
@@ -189,7 +189,7 @@ mod tests {
         let stats = DeltaStats::from_instructions(&instructions);
         let ratio = stats.compression_ratio(1000);
 
-        // リテラルデータのみなので圧縮率は負（むしろ増加）
+
         assert!(ratio < 0.0);
     }
 }

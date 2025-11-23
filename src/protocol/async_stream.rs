@@ -3,9 +3,9 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use crate::error::{Result, RsyncError};
 use std::io::Cursor;
 
-/// 非同期版rsyncプロトコルストリーム
-///
-/// rsyncプロトコルで定義されているデータ型を非同期で読み書きするためのラッパー
+
+
+
 pub struct AsyncProtocolStream<S> {
     stream: S,
     #[allow(dead_code)]
@@ -13,12 +13,12 @@ pub struct AsyncProtocolStream<S> {
 }
 
 impl<S: AsyncRead + AsyncWrite + Unpin> AsyncProtocolStream<S> {
-    /// 新しいAsyncProtocolStreamを作成
+
     pub fn new(stream: S, protocol_version: i32) -> Self {
         Self { stream, protocol_version }
     }
 
-    // --- 基本的なデータ型の読み書き ---
+
 
     pub async fn read_i8(&mut self) -> Result<i8> {
         Ok(self.stream.read_i8().await?)
@@ -50,7 +50,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> AsyncProtocolStream<S> {
         Ok(self.stream.write_u8(val).await?)
     }
 
-    // --- 可変長整数 (varint) ---
+
 
     pub async fn read_varint(&mut self) -> Result<i64> {
         let first = self.read_u8().await?;
@@ -105,7 +105,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> AsyncProtocolStream<S> {
         Ok(())
     }
 
-    // --- 文字列 ---
+
 
     pub async fn read_string(&mut self, max_len: usize) -> Result<String> {
         let mut bytes = Vec::new();
@@ -131,7 +131,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> AsyncProtocolStream<S> {
         Ok(())
     }
 
-    // --- バイナリデータ ---
+
 
     pub async fn read_all(&mut self, buf: &mut [u8]) -> Result<()> {
         self.stream.read_exact(buf).await?;

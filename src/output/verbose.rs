@@ -1,69 +1,70 @@
-//! Verbose出力モジュール
-//!
-//! 冗長レベルに応じた詳細な情報出力を管理する。
-//! -v: 基本的な情報
-//! -vv: より詳細な情報
-//! -vvv: デバッグレベルの情報
+
+
+
+
+
+
 
 use std::path::Path;
 use crate::filesystem::FileInfo;
 
-/// Verbose出力マネージャー
-#[allow(dead_code)]
+
 pub struct VerboseOutput {
-    /// 冗長レベル (0=quiet, 1=normal, 2=verbose, 3+=very verbose)
+
     level: u8,
-    /// 静かモード
+
     quiet: bool,
 }
 
 impl VerboseOutput {
-    /// 新しいVerboseOutputを作成
+
     pub fn new(level: u8, quiet: bool) -> Self {
         VerboseOutput { level, quiet }
     }
 
-    /// レベル1以上の場合に出力
+
     pub fn print_basic<S: AsRef<str>>(&self, message: S) {
         if !self.quiet && self.level >= 1 {
             println!("{}", message.as_ref());
         }
     }
 
-    /// レベル2以上の場合に出力
+
     pub fn print_verbose<S: AsRef<str>>(&self, message: S) {
         if !self.quiet && self.level >= 2 {
             println!("{}", message.as_ref());
         }
     }
 
-    /// レベル3以上の場合に出力
+
     pub fn print_debug<S: AsRef<str>>(&self, message: S) {
         if !self.quiet && self.level >= 3 {
             println!("[DEBUG] {}", message.as_ref());
         }
     }
 
-    /// エラーメッセージを出力（quietモードでも表示）
+
     #[allow(dead_code)]
     pub fn print_error<S: AsRef<str>>(&self, message: S) {
         eprintln!("Error: {}", message.as_ref());
     }
 
-    /// 警告メッセージを出力（quietモードでも表示）
+
     #[allow(dead_code)]
     pub fn print_warning<S: AsRef<str>>(&self, message: S) {
         eprintln!("Warning: {}", message.as_ref());
     }
 
-    /// ファイル転送開始を通知
+
+    #[allow(dead_code)]
     pub fn print_file_start(&self, file_info: &FileInfo) {
         if !self.quiet && self.level >= 1 {
             println!("{}", file_info.path.display());
         }
     }
 
-    /// ファイル転送完了を通知（詳細モード）
+
+    #[allow(dead_code)]
     pub fn print_file_complete(&self, file_info: &FileInfo, bytes_transferred: u64) {
         if !self.quiet && self.level >= 2 {
             println!(
@@ -74,14 +75,16 @@ impl VerboseOutput {
         }
     }
 
-    /// ディレクトリスキャン開始を通知
+
+    #[allow(dead_code)]
     pub fn print_scan_start(&self, path: &Path) {
         if !self.quiet && self.level >= 2 {
             println!("Scanning directory: {}", path.display());
         }
     }
 
-    /// ディレクトリスキャン完了を通知
+
+    #[allow(dead_code)]
     pub fn print_scan_complete(&self, path: &Path, file_count: usize) {
         if !self.quiet && self.level >= 2 {
             println!(
@@ -92,28 +95,32 @@ impl VerboseOutput {
         }
     }
 
-    /// ファイル削除を通知
+
+    #[allow(dead_code)]
     pub fn print_delete(&self, path: &Path) {
         if !self.quiet && self.level >= 1 {
             println!("deleting {}", path.display());
         }
     }
 
-    /// ファイルスキップを通知
+
+    #[allow(dead_code)]
     pub fn print_skip(&self, path: &Path, reason: &str) {
         if !self.quiet && self.level >= 2 {
             println!("skipping {} ({})", path.display(), reason);
         }
     }
 
-    /// チェックサム計算開始を通知
+
+    #[allow(dead_code)]
     pub fn print_checksum_start(&self, path: &Path) {
         if !self.quiet && self.level >= 3 {
             println!("[DEBUG] Computing checksum for {}", path.display());
         }
     }
 
-    /// デルタ計算開始を通知
+
+    #[allow(dead_code)]
     pub fn print_delta_start(&self, path: &Path, block_count: usize) {
         if !self.quiet && self.level >= 3 {
             println!(
@@ -124,7 +131,8 @@ impl VerboseOutput {
         }
     }
 
-    /// 圧縮情報を通知
+
+    #[allow(dead_code)]
     pub fn print_compression(&self, original_size: u64, compressed_size: u64) {
         if !self.quiet && self.level >= 2 {
             let ratio = if original_size > 0 {
@@ -139,7 +147,7 @@ impl VerboseOutput {
         }
     }
 
-    /// 転送速度を通知
+
     pub fn print_transfer_rate(&self, bytes: u64, duration_secs: f64) {
         if !self.quiet && self.level >= 2 {
             let rate = if duration_secs > 0.0 {
@@ -151,7 +159,8 @@ impl VerboseOutput {
         }
     }
 
-    /// プロトコルバージョン交渉を通知
+
+    #[allow(dead_code)]
     pub fn print_protocol_version(&self, local: u32, remote: u32, negotiated: u32) {
         if !self.quiet && self.level >= 3 {
             println!(
@@ -161,28 +170,32 @@ impl VerboseOutput {
         }
     }
 
-    /// SSH接続情報を通知
+
+    #[allow(dead_code)]
     pub fn print_ssh_connect(&self, host: &str, port: u16) {
         if !self.quiet && self.level >= 2 {
             println!("Connecting to {}:{}...", host, port);
         }
     }
 
-    /// SSH認証成功を通知
+
+    #[allow(dead_code)]
     pub fn print_ssh_auth_success(&self, method: &str) {
         if !self.quiet && self.level >= 2 {
             println!("Authentication successful ({})", method);
         }
     }
 
-    /// ドライラン通知
+
+    #[allow(dead_code)]
     pub fn print_dry_run_notice(&self) {
         if !self.quiet {
             println!("*** DRY RUN MODE - No files will be modified ***");
         }
     }
 
-    /// バックアップ作成通知
+
+    #[allow(dead_code)]
     pub fn print_backup(&self, original: &Path, backup: &Path) {
         if !self.quiet && self.level >= 1 {
             println!(
@@ -193,19 +206,22 @@ impl VerboseOutput {
         }
     }
 
-    /// リモートコマンド実行を通知
+
+    #[allow(dead_code)]
     pub fn print_remote_command(&self, command: &str) {
         if !self.quiet && self.level >= 3 {
             println!("[DEBUG] Executing remote command: {}", command);
         }
     }
 
-    /// 現在のレベルを取得
+
+    #[allow(dead_code)]
     pub fn level(&self) -> u8 {
         self.level
     }
 
-    /// quietモードかどうか
+
+    #[allow(dead_code)]
     pub fn is_quiet(&self) -> bool {
         self.quiet
     }

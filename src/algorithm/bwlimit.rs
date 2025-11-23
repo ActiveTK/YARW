@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
 pub struct BandwidthLimiter {
-    limit: u64, // bytes per second
+    limit: u64,
     start_time: Instant,
     bytes_sent: u64,
 }

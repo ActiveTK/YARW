@@ -1,51 +1,54 @@
 use std::path::Path;
 
-/// 変更タイプ
-#[allow(dead_code)]
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChangeType {
-    /// 受信（リモート→ローカル）
+
     Receive,
-    /// 送信（ローカル→リモート）
+
+    #[allow(dead_code)]
     Send,
-    /// ローカル変更
+
     LocalChange,
-    /// ファイルが更新されていない
+
+    #[allow(dead_code)]
     NoUpdate,
-    /// メッセージ（削除など）
+
     Message,
 }
 
-/// ファイルタイプ
-#[allow(dead_code)]
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FileType {
     File,
     Directory,
+    #[allow(dead_code)]
     Symlink,
+    #[allow(dead_code)]
     Device,
+    #[allow(dead_code)]
     Special,
 }
 
-/// Itemized Change（変更詳細）
+
 #[derive(Debug, Clone)]
 pub struct ItemizeChange {
-    /// 更新タイプ
+
     pub update_type: ChangeType,
-    /// ファイルタイプ
+
     pub file_type: FileType,
-    /// チェックサムが異なる
+
     pub checksum_diff: bool,
-    /// サイズが異なる
+
     pub size_diff: bool,
-    /// 修正時刻が異なる
+
     pub time_diff: bool,
-    /// パス
+
     pub path: String,
 }
 
 impl ItemizeChange {
-    /// 新しいファイルの作成
+
     pub fn new_file(path: &Path) -> Self {
         Self {
             update_type: ChangeType::Receive,
@@ -57,7 +60,7 @@ impl ItemizeChange {
         }
     }
 
-    /// ファイルの更新
+
     pub fn update_file(path: &Path, size_diff: bool, time_diff: bool) -> Self {
         Self {
             update_type: ChangeType::Receive,
@@ -69,7 +72,7 @@ impl ItemizeChange {
         }
     }
 
-    /// ディレクトリの作成
+
     pub fn new_directory(path: &Path) -> Self {
         Self {
             update_type: ChangeType::LocalChange,
@@ -81,7 +84,7 @@ impl ItemizeChange {
         }
     }
 
-    /// ファイルの削除
+
     pub fn delete_file(path: &Path) -> Self {
         Self {
             update_type: ChangeType::Message,
@@ -93,8 +96,8 @@ impl ItemizeChange {
         }
     }
 
-    /// rsyncスタイルのitemize文字列にフォーマット
-    /// 例: ">f+++++++++ path/to/file.txt"
+
+
     pub fn format(&self) -> String {
         let update_char = match self.update_type {
             ChangeType::Receive => '>',
@@ -116,7 +119,7 @@ impl ItemizeChange {
         let size_char = if self.size_diff { 's' } else { '.' };
         let time_char = if self.time_diff { 't' } else { '.' };
 
-        // Windows版では p, o, g は常に '.'
+
         let perms_char = '.';
         let owner_char = '.';
         let group_char = '.';

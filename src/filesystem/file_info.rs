@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::time::SystemTime;
 
-/// ファイルタイプ
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FileType {
     File,
@@ -9,35 +9,35 @@ pub enum FileType {
     Symlink,
 }
 
-/// ファイルメタデータ
+
 #[derive(Debug, Clone)]
 pub struct FileInfo {
-    /// ファイルパス
+
     pub path: PathBuf,
 
-    /// ファイルサイズ（バイト）
+
     pub size: u64,
 
-    /// 最終修正時刻
+
     pub mtime: SystemTime,
 
-    /// ファイルタイプ
+
     pub file_type: FileType,
 
-    /// シンボリックリンクかどうか
+
     pub is_symlink: bool,
 
-    /// シンボリックリンクのターゲット（シンボリックリンクの場合のみ）
+
     pub symlink_target: Option<PathBuf>,
 
-    // Windows版では以下のフィールドは無視
-    // pub permissions: Option<Permissions>,
-    // pub uid: Option<u32>,
-    // pub gid: Option<u32>,
+
+
+
+
 }
 
 impl FileInfo {
-    /// std::fs::Metadataから FileInfo を作成
+
     pub fn from_metadata(path: PathBuf, metadata: &std::fs::Metadata) -> Self {
         let file_type = if metadata.is_dir() {
             FileType::Directory
@@ -64,30 +64,30 @@ impl FileInfo {
         }
     }
 
-    /// ファイルがディレクトリかどうか
+
     pub fn is_directory(&self) -> bool {
         self.file_type == FileType::Directory
     }
 
-    /// ファイルが通常のファイルかどうか
+
     #[allow(dead_code)]
     pub fn is_file(&self) -> bool {
         self.file_type == FileType::File
     }
 
-    /// 相対パスを取得（base からの相対パス）
+
     pub fn relative_path(&self, base: &std::path::Path) -> Option<PathBuf> {
         self.path.strip_prefix(base).ok().map(|p| p.to_path_buf())
     }
 
-    /// 人間が読める形式でサイズを表示
+
     #[allow(dead_code)]
     pub fn human_readable_size(&self) -> String {
         human_readable_size(self.size)
     }
 }
 
-/// バイトサイズを人間が読める形式に変換
+
 pub fn human_readable_size(bytes: u64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
 
