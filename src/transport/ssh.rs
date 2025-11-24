@@ -67,19 +67,13 @@ impl SshTransport {
                     )));
                 }
 
-                eprintln!("[DEBUG] Loading private key from: {}", private_key_path.display());
                 let key_pair = load_secret_key(&private_key_path, None)
                     .map_err(|e| RsyncError::Auth(format!("Failed to load private key: {}", e)))?;
-
-                eprintln!("[DEBUG] Key loaded successfully, type: {:?}", key_pair.name());
-                eprintln!("[DEBUG] Attempting authentication with username: {}", username);
 
                 let auth_res = session
                     .authenticate_publickey(username, Arc::new(key_pair))
                     .await
                     .map_err(|e| RsyncError::Auth(format!("Public key authentication failed: {}", e)))?;
-
-                eprintln!("[DEBUG] Authentication result: {}", auth_res);
 
                 if !auth_res {
                     return Err(RsyncError::Auth("Public key authentication rejected by server".to_string()));
@@ -173,7 +167,6 @@ impl std::io::Read for SshChannel {
             for i in 0..len {
                 buf[i] = self.read_buffer.pop_front().unwrap();
             }
-            eprintln!("[SSH READ] Returning {} bytes from buffer (buffer has {} bytes left)", len, self.read_buffer.len());
             Ok(len)
             })
         })

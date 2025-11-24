@@ -139,7 +139,7 @@ impl RemoteTransport {
 
                     match tokio::task::block_in_place(|| handle.block_on(transport.execute(&rsync_command_str))) {
                         Ok(mut channel) => {
-                            use crate::protocol::{CompatFlags, ExcludeList, send_file_list, recv_file_list, CF_VARINT_FLIST_FLAGS};
+                            use crate::protocol::{CompatFlags, send_file_list, recv_file_list, CF_VARINT_FLIST_FLAGS, ExcludeList, MultiplexIO};
 
                             verbose.print_verbose("Negotiating protocol version...");
                             channel.write_all(&PROTOCOL_VERSION_MAX.to_le_bytes())?;
@@ -195,10 +195,9 @@ impl RemoteTransport {
 
                             verbose.print_verbose("Exchanging exclusion lists...");
                             let exclude_list = ExcludeList::new();
+                            verbose.print_verbose("Sending exclusion list...");
                             exclude_list.send(&mut channel)?;
-
-                            let _remote_exclude_list = ExcludeList::recv(&mut channel)?;
-                            verbose.print_verbose("Exclusion lists exchanged.");
+                            verbose.print_verbose("Exclusion list sent.");
 
                             let local_file_infos = if !is_remote_source {
                                 let scanner = Scanner::new()
