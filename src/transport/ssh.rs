@@ -113,6 +113,7 @@ impl SshTransport {
         Ok(SshChannel {
             channel,
             read_buffer: VecDeque::new(),
+            write_seq: std::cell::Cell::new(0),
         })
     }
 }
@@ -120,6 +121,7 @@ impl SshTransport {
 pub struct SshChannel {
     channel: russh::Channel<russh::client::Msg>,
     read_buffer: VecDeque<u8>,
+    write_seq: std::cell::Cell<u32>,
 }
 
 impl std::io::Read for SshChannel {
@@ -176,7 +178,9 @@ impl std::io::Read for SshChannel {
 
 impl std::io::Write for SshChannel {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        eprintln!("[SSH] Writing {} bytes: {:02x?}", buf.len(), &buf[..buf.len().min(16)]);
+        let seq = self.write_seq.get();
+        self.write_seq.set(seq + 1);
+        eprintln!("[SSH #{:03}] Writing {} bytes: {:02x?}", seq, buf.len(), &buf[..buf.len().min(16)]);
         let handle = tokio::runtime::Handle::try_current()
             .expect("must be called from within a tokio runtime");
 

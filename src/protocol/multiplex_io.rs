@@ -30,16 +30,28 @@ impl<T: Read> MultiplexIO<T> {
         eprintln!("[MPLEX] About to read header...");
 
         let mut header_bytes = [0u8; 4];
-        match self.inner.read_exact(&mut header_bytes) {
-            Ok(()) => {
-                eprintln!("[MPLEX] Read header bytes: {:02x} {:02x} {:02x} {:02x}",
-                    header_bytes[0], header_bytes[1], header_bytes[2], header_bytes[3]);
-            }
-            Err(e) => {
-                eprintln!("[MPLEX] Failed to read header: {}", e);
-                return Err(RsyncError::Io(e));
+        let mut total_read = 0;
+        while total_read < 4 {
+            match self.inner.read(&mut header_bytes[total_read..]) {
+                Ok(0) => {
+                    eprintln!("[MPLEX] EOF encountered after reading {} bytes", total_read);
+                    return Err(RsyncError::Io(std::io::Error::new(
+                        std::io::ErrorKind::UnexpectedEof,
+                        "failed to fill whole buffer"
+                    )));
+                }
+                Ok(n) => {
+                    eprintln!("[MPLEX] Read {} bytes of header (total: {}/4)", n, total_read + n);
+                    total_read += n;
+                }
+                Err(e) => {
+                    eprintln!("[MPLEX] Failed to read header: {}", e);
+                    return Err(RsyncError::Io(e));
+                }
             }
         }
+        eprintln!("[MPLEX] Read header bytes: {:02x} {:02x} {:02x} {:02x}",
+            header_bytes[0], header_bytes[1], header_bytes[2], header_bytes[3]);
 
         let header = u32::from_be_bytes(header_bytes);
 
