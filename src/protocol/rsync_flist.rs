@@ -236,14 +236,19 @@ fn recv_file_entry<R: Read>(
     protocol_version: i32,
     use_varint_flags: bool,
 ) -> Result<Option<FileEntry>> {
+    eprintln!("[FLIST] recv_file_entry: use_varint_flags={}, protocol_version={}", use_varint_flags, protocol_version);
     let flags = if use_varint_flags {
+        eprintln!("[FLIST] Reading flags as varint...");
         let f = read_varint(reader)? as u16;
+        eprintln!("[FLIST] Read flags varint: {:#04x}", f);
         if f == 0 {
             return Ok(None);
         }
         f
     } else if protocol_version >= 28 {
+        eprintln!("[FLIST] Reading flags as u8 (extended flags support)...");
         let b1 = reader.read_u8()? as u16;
+        eprintln!("[FLIST] Read first flags byte: {:#04x}", b1);
         if b1 == 0 {
             return Ok(None);
         }

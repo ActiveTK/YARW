@@ -236,9 +236,7 @@ impl RemoteTransport {
                     let mut option_string = String::new();
 
                     if self.options.verbose > 0 {
-                        for _ in 0..self.options.verbose {
-                            option_string.push('v');
-                        }
+                        option_string.push('v');
                     }
 
                     if self.options.archive {
@@ -293,7 +291,7 @@ impl RemoteTransport {
                                 let do_neg_strings = remote_compat_flags.has_flag(CF_VARINT_FLIST_FLAGS);
                                 verbose.print_verbose(&format!("Negotiated strings: {}", do_neg_strings));
 
-                                (flags, do_neg_strings)
+                                (remote_compat_flags, do_neg_strings)
                             } else {
                                 (CompatFlags { flags: 0 }, false)
                             };
@@ -331,9 +329,9 @@ impl RemoteTransport {
                             verbose.print_verbose("Filter list sent.");
 
                             let use_multiplex = negotiated_version >= 23;
-                            if use_multiplex && negotiated_version >= 23 {
+                            if use_multiplex {
                                 verbose.print_verbose("Starting multiplex I/O...");
-                                let channel = MultiplexIO::new(channel);
+                                let mut channel = MultiplexIO::new(channel);
 
                                 Self::handle_multiplexed_protocol(
                                     channel,

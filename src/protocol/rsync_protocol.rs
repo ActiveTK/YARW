@@ -53,12 +53,12 @@ impl CompatFlags {
     }
 
     pub fn write<W: Write>(&self, writer: &mut W) -> Result<()> {
-        write_varint(writer, self.flags as i64)?;
+        writer.write_u8(self.flags)?;
         Ok(())
     }
 
     pub fn read<R: Read>(reader: &mut R) -> Result<Self> {
-        let flags = read_varint(reader)? as u8;
+        let flags = reader.read_u8()?;
         Ok(Self { flags })
     }
 
