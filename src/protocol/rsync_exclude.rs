@@ -12,12 +12,16 @@ impl ExcludeList {
     }
 
     pub fn send<W: Write>(&self, writer: &mut W) -> Result<()> {
+        eprintln!("[EXCLUDE] Sending {} exclusion rules", self.rules.len());
         for rule in &self.rules {
             let rule_bytes = rule.as_bytes();
+            eprintln!("[EXCLUDE] Sending rule (len={}): {}", rule_bytes.len(), rule);
             writer.write_i32::<LittleEndian>(rule_bytes.len() as i32)?;
             writer.write_all(rule_bytes)?;
         }
+        eprintln!("[EXCLUDE] Sending terminator (0)");
         writer.write_i32::<LittleEndian>(0)?;
+        eprintln!("[EXCLUDE] Exclude list send complete");
         Ok(())
     }
 

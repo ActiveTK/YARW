@@ -30,7 +30,7 @@ impl RemoteTransport {
         stats: &mut SyncStats,
         start_time: Instant,
     ) -> Result<()> {
-        use crate::protocol::{ExcludeList, send_file_list, recv_file_list};
+        use crate::protocol::{ExcludeList, send_file_list, recv_file_list, MultiplexWriter};
         use crate::filesystem::Scanner;
 
         verbose.print_verbose("Exchanging exclusion lists...");
@@ -240,9 +240,23 @@ impl RemoteTransport {
                         rsync_args.push("--sender");
                     }
 
+                    if self.options.archive {
+                        rsync_args.push("-r");
+                        rsync_args.push("-l");
+                        rsync_args.push("-p");
+                        rsync_args.push("-t");
+                        rsync_args.push("-g");
+                        rsync_args.push("-o");
+                        rsync_args.push("-D");
+                    } else {
+                        if self.options.recursive { rsync_args.push("-r"); }
+                    }
 
-                    if self.options.recursive { rsync_args.push("-r"); }
-                    if self.options.verbose > 0 { rsync_args.push("-v"); }
+                    if self.options.verbose > 0 {
+                        for _ in 0..self.options.verbose {
+                            rsync_args.push("-v");
+                        }
+                    }
                     if self.options.delete { rsync_args.push("--delete"); }
 
                     rsync_args.push(".");
@@ -307,7 +321,8 @@ impl RemoteTransport {
                             let _checksum_seed = i32::from_le_bytes(checksum_seed_bytes);
                             verbose.print_verbose(&format!("Checksum seed: {}", _checksum_seed));
 
-                            if negotiated_version >= 23 {
+                            let use_multiplex = false;
+                            if use_multiplex && negotiated_version >= 23 {
                                 verbose.print_verbose("Starting multiplex I/O...");
                                 let channel = MultiplexIO::new(channel);
 
@@ -324,6 +339,8 @@ impl RemoteTransport {
                                 )?;
 
                                 return Ok(stats);
+                            } else {
+                                verbose.print_verbose("Using non-multiplex mode (for debugging)...");
                             }
 
                             verbose.print_verbose("Exchanging exclusion lists...");

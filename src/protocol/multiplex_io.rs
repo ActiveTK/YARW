@@ -27,7 +27,20 @@ impl<T> MultiplexIO<T> {
 impl<T: Read> MultiplexIO<T> {
     fn read_packet(&mut self) -> Result<()> {
         eprintln!("[MPLEX] About to read header...");
-        let header = self.inner.read_u32::<BigEndian>()?;
+
+        let mut header_bytes = [0u8; 4];
+        match self.inner.read_exact(&mut header_bytes) {
+            Ok(()) => {
+                eprintln!("[MPLEX] Read header bytes: {:02x} {:02x} {:02x} {:02x}",
+                    header_bytes[0], header_bytes[1], header_bytes[2], header_bytes[3]);
+            }
+            Err(e) => {
+                eprintln!("[MPLEX] Failed to read header: {}", e);
+                return Err(RsyncError::Io(e));
+            }
+        }
+
+        let header = u32::from_be_bytes(header_bytes);
 
         let tag = (header >> 24) as u8;
         let length = (header & 0x00FFFFFF) as usize;
@@ -40,10 +53,12 @@ impl<T: Read> MultiplexIO<T> {
             let mut msg_data = vec![0u8; length];
             self.inner.read_exact(&mut msg_data)?;
 
-            eprintln!("[MPLEX] Non-data message (code {}): {}", msg_code, String::from_utf8_lossy(&msg_data));
+            let msg_str = String::from_utf8_lossy(&msg_data);
+            eprintln!("[MPLEX] Non-data message (code {}): {}", msg_code, msg_str);
 
             if msg_code >= 1 && msg_code <= 3 {
-                eprintln!("Remote error: {}", String::from_utf8_lossy(&msg_data));
+                eprintln!("Remote error (code {}): {}", msg_code, msg_str);
+                return Err(RsyncError::RemoteExec(format!("Server error: {}", msg_str)));
             }
 
             return Ok(());

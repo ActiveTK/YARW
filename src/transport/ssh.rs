@@ -175,6 +175,7 @@ impl std::io::Read for SshChannel {
 
 impl std::io::Write for SshChannel {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        eprintln!("[SSH] Writing {} bytes: {:02x?}", buf.len(), &buf[..buf.len().min(16)]);
         let handle = tokio::runtime::Handle::try_current()
             .expect("must be called from within a tokio runtime");
 
@@ -190,6 +191,7 @@ impl std::io::Write for SshChannel {
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
+        eprintln!("[SSH] Flush called");
         Ok(())
     }
 }
