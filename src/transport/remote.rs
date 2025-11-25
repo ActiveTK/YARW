@@ -33,13 +33,6 @@ impl RemoteTransport {
         use crate::protocol::{ExcludeList, send_file_list, recv_file_list, MultiplexWriter};
         use crate::filesystem::Scanner;
 
-        verbose.print_verbose("Exchanging exclusion lists...");
-        let exclude_list = ExcludeList::new();
-        verbose.print_verbose("Sending exclusion list...");
-        exclude_list.send(&mut channel)?;
-        channel.flush()?;
-        verbose.print_verbose("Exclusion list sent.");
-
         let local_file_infos = if !is_remote_source {
             let scanner = Scanner::new()
                 .recursive(options.recursive)
@@ -234,35 +227,45 @@ impl RemoteTransport {
                     let remote_unix_path = to_unix_separators(&remote_raw_path);
 
 
-                    let mut rsync_args = vec!["--server"];
+                    let mut rsync_command = String::from("rsync --server");
 
                     if is_remote_source {
-                        rsync_args.push("--sender");
+                        rsync_command.push_str(" --sender");
                     }
 
-                    if self.options.archive {
-                        rsync_args.push("-r");
-                        rsync_args.push("-l");
-                        rsync_args.push("-p");
-                        rsync_args.push("-t");
-                        rsync_args.push("-g");
-                        rsync_args.push("-o");
-                        rsync_args.push("-D");
-                    } else {
-                        if self.options.recursive { rsync_args.push("-r"); }
-                    }
+                    let mut option_string = String::new();
 
                     if self.options.verbose > 0 {
                         for _ in 0..self.options.verbose {
-                            rsync_args.push("-v");
+                            option_string.push('v');
                         }
                     }
-                    if self.options.delete { rsync_args.push("--delete"); }
 
-                    rsync_args.push(".");
-                    rsync_args.push(&remote_unix_path);
+                    if self.options.archive {
+                        option_string.push_str("logDtpre");
+                    } else {
+                        if self.options.recursive { option_string.push('r'); }
+                    }
 
-                    let rsync_command_str = format!("rsync {}", rsync_args.join(" "));
+                    option_string.push('.');
+
+                    if self.options.itemize_changes {
+                        option_string.push('i');
+                    }
+
+                    if !option_string.is_empty() {
+                        rsync_command.push_str(&format!(" -{}", option_string));
+                    }
+
+                    if self.options.delete {
+                        rsync_command.push_str(" --delete");
+                    }
+
+                    rsync_command.push_str(" .");
+                    rsync_command.push(' ');
+                    rsync_command.push_str(&remote_unix_path);
+
+                    let rsync_command_str = rsync_command;
                     verbose.print_debug(&format!("Executing remote command: {}", rsync_command_str));
 
                     match tokio::task::block_in_place(|| handle.block_on(transport.execute(&rsync_command_str))) {
@@ -321,7 +324,13 @@ impl RemoteTransport {
                             let _checksum_seed = i32::from_le_bytes(checksum_seed_bytes);
                             verbose.print_verbose(&format!("Checksum seed: {}", _checksum_seed));
 
-                            let use_multiplex = false;
+                            verbose.print_verbose("Sending filter list...");
+                            let exclude_list = ExcludeList::new();
+                            exclude_list.send(&mut channel)?;
+                            channel.flush()?;
+                            verbose.print_verbose("Filter list sent.");
+
+                            let use_multiplex = negotiated_version >= 23;
                             if use_multiplex && negotiated_version >= 23 {
                                 verbose.print_verbose("Starting multiplex I/O...");
                                 let channel = MultiplexIO::new(channel);
@@ -342,12 +351,6 @@ impl RemoteTransport {
                             } else {
                                 verbose.print_verbose("Using non-multiplex mode (for debugging)...");
                             }
-
-                            verbose.print_verbose("Exchanging exclusion lists...");
-                            let exclude_list = ExcludeList::new();
-                            verbose.print_verbose("Sending exclusion list...");
-                            exclude_list.send(&mut channel)?;
-                            verbose.print_verbose("Exclusion list sent.");
 
                             let local_file_infos = if !is_remote_source {
                                 let scanner = Scanner::new()
