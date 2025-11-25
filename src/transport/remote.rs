@@ -322,16 +322,16 @@ impl RemoteTransport {
                             let _checksum_seed = i32::from_le_bytes(checksum_seed_bytes);
                             verbose.print_verbose(&format!("Checksum seed: {}", _checksum_seed));
 
-                            verbose.print_verbose("Sending filter list...");
-                            let exclude_list = ExcludeList::new();
-                            exclude_list.send(&mut channel)?;
-                            channel.flush()?;
-                            verbose.print_verbose("Filter list sent.");
-
                             let use_multiplex = negotiated_version >= 23;
                             if use_multiplex {
-                                verbose.print_verbose("Starting multiplex I/O...");
+                                verbose.print_verbose("Starting multiplex I/O for reads...");
                                 let mut channel = MultiplexIO::new(channel);
+
+                                verbose.print_verbose("Sending filter list...");
+                                let exclude_list = ExcludeList::new();
+                                exclude_list.send(&mut channel)?;
+                                channel.flush()?;
+                                verbose.print_verbose("Filter list sent.");
 
                                 Self::handle_multiplexed_protocol(
                                     channel,
@@ -348,6 +348,12 @@ impl RemoteTransport {
                                 return Ok(stats);
                             } else {
                                 verbose.print_verbose("Using non-multiplex mode (for debugging)...");
+
+                                verbose.print_verbose("Sending filter list...");
+                                let exclude_list = ExcludeList::new();
+                                exclude_list.send(&mut channel)?;
+                                channel.flush()?;
+                                verbose.print_verbose("Filter list sent.");
                             }
 
                             let local_file_infos = if !is_remote_source {

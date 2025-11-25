@@ -5,6 +5,7 @@ use crate::error::{Result, RsyncError};
 
 const MPLEX_BASE: u8 = 7;
 const MSG_DATA: u8 = 0;
+const MAX_MPLEX_DATA: usize = 0xFFFFFF;
 
 pub struct MultiplexIO<T> {
     inner: T,
