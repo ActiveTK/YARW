@@ -271,22 +271,22 @@ impl RemoteTransport {
                             use crate::protocol::{CompatFlags, send_file_list, recv_file_list, CF_VARINT_FLIST_FLAGS, ExcludeList, MultiplexIO};
 
                             verbose.print_verbose("Negotiating protocol version...");
-                            channel.write_all(&PROTOCOL_VERSION_MAX.to_le_bytes())?;
-
                             let mut remote_version_bytes = [0u8; 4];
                             channel.read_exact(&mut remote_version_bytes)?;
                             let remote_version = i32::from_le_bytes(remote_version_bytes);
+
+                            channel.write_all(&PROTOCOL_VERSION_MAX.to_le_bytes())?;
 
                             let negotiated_version = PROTOCOL_VERSION_MAX.min(remote_version);
                             verbose.print_verbose(&format!("Protocol versions: local={}, remote={}, negotiated={}", PROTOCOL_VERSION_MAX, remote_version, negotiated_version));
 
                             let (compat_flags, do_negotiated_strings) = if negotiated_version >= 30 {
                                 verbose.print_verbose("Exchanging compatibility flags...");
-                                let flags = CompatFlags::new_for_protocol_31();
-                                flags.write(&mut channel)?;
-
                                 let remote_compat_flags = CompatFlags::read(&mut channel)?;
                                 verbose.print_verbose(&format!("Remote compat flags: 0x{:02x}", remote_compat_flags.flags));
+
+                                let flags = CompatFlags::new_for_protocol_31();
+                                flags.write(&mut channel)?;
 
                                 let do_neg_strings = remote_compat_flags.has_flag(CF_VARINT_FLIST_FLAGS);
                                 verbose.print_verbose(&format!("Negotiated strings: {}", do_neg_strings));

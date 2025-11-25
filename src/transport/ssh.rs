@@ -148,7 +148,8 @@ impl std::io::Read for SshChannel {
                         break;
                     }
                     Some(ChannelMsg::ExtendedData { ref data, ext: _ }) => {
-                        std::io::stderr().write_all(data).ok();
+                        let stderr_msg = String::from_utf8_lossy(data);
+                        eprintln!("[SSH STDERR] {}", stderr_msg);
                         continue;
                     }
                     Some(_) => {
