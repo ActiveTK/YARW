@@ -26,6 +26,7 @@ impl<T> MultiplexIO<T> {
 
 impl<T: Read> MultiplexIO<T> {
     fn read_packet(&mut self) -> Result<()> {
+        eprintln!("[MPLEX] About to read header...");
         let header = self.inner.read_u32::<BigEndian>()?;
 
         let tag = (header >> 24) as u8;

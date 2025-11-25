@@ -25,3 +25,4 @@ pub use rsync_flist::*;
 pub use rsync_exclude::*;
 pub use multiplex::{MultiplexReader, MultiplexWriter};
 pub use multiplex_io::MultiplexIO;
+pub use message::*;
