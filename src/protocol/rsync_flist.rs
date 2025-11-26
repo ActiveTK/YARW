@@ -254,7 +254,10 @@ fn recv_file_entry<R: Read>(
         }
         if (b1 & (XMIT_EXTENDED_FLAGS as u16)) != 0 {
             let b2 = reader.read_u8()? as u16;
-            b1 | (b2 << 8)
+            eprintln!("[FLIST] Read extended flags byte: {:#04x}", b2);
+            let combined = b1 | (b2 << 8);
+            eprintln!("[FLIST] Combined flags: {:#06x}", combined);
+            combined
         } else {
             b1
         }
@@ -272,16 +275,28 @@ fn recv_file_entry<R: Read>(
         0
     };
 
+    eprintln!("[FLIST] Flags analysis: SAME_NAME={}, LONG_NAME={}",
+        (flags & XMIT_SAME_NAME) != 0, (flags & XMIT_LONG_NAME) != 0);
+
     let common_prefix_len = if (flags & XMIT_SAME_NAME) != 0 {
-        reader.read_u8()? as usize
+        let len = reader.read_u8()? as usize;
+        eprintln!("[FLIST] Read common_prefix_len: {}", len);
+        len
     } else {
+        eprintln!("[FLIST] common_prefix_len: 0 (not reading)");
         0
     };
 
     let suffix_len = if (flags & XMIT_LONG_NAME) != 0 {
-        read_varint30(reader)? as usize
+        eprintln!("[FLIST] Reading suffix_len as varint30...");
+        let len = read_varint30(reader)? as usize;
+        eprintln!("[FLIST] Read suffix_len (varint30): {}", len);
+        len
     } else {
-        reader.read_u8()? as usize
+        eprintln!("[FLIST] Reading suffix_len as u8...");
+        let len = reader.read_u8()? as usize;
+        eprintln!("[FLIST] Read suffix_len (u8): {}", len);
+        len
     };
 
     let mut path_bytes = vec![0u8; suffix_len];

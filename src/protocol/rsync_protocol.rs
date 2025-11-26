@@ -189,22 +189,36 @@ pub fn write_varint30<W: Write>(writer: &mut W, val: i64) -> Result<()> {
 
 pub fn read_varint30<R: Read>(reader: &mut R) -> Result<i64> {
     let b1 = reader.read_u8()? as i64;
-    let b2 = reader.read_u8()? as i64;
+    eprintln!("[VARINT30] Read b1={:#04x}", b1);
 
     if b1 == 0xFF {
-        let low = b2;
+        let b2 = reader.read_u8()? as i64;
         let high = reader.read_i64::<LittleEndian>()?;
-        return Ok((high << 8) | low);
+        let result = (high << 8) | b2;
+        eprintln!("[VARINT30] Mode 0xFF: b2={}, high={}, result={}", b2, high, result);
+        return Ok(result);
     }
 
     if b1 == 0xFE {
-        let b3 = reader.read_u8()? as i64;
-        let b4 = reader.read_u8()? as i64;
-        let b5 = reader.read_u8()? as i64;
-        return Ok(b2 | (b3 << 8) | (b4 << 16) | (b5 << 24));
+        let mut bytes = [0u8; 4];
+        reader.read_exact(&mut bytes)?;
+        let result = i32::from_le_bytes(bytes) as i64;
+        eprintln!("[VARINT30] Mode 0xFE: bytes={:?}, result={}", bytes, result);
+        return Ok(result);
     }
 
-    Ok(b1 | (b2 << 8))
+    let b2 = reader.read_u8()? as i64;
+    eprintln!("[VARINT30] Read b2={:#04x}", b2);
+
+    if b1 < 0x80 {
+        let result = b1 | (b2 << 8);
+        eprintln!("[VARINT30] Mode <0x80: result={}", result);
+        Ok(result)
+    } else {
+        let result = ((b1 & 0x7F) << 7) | b2;
+        eprintln!("[VARINT30] Mode >=0x80: result={}", result);
+        Ok(result)
+    }
 }
 
 pub fn write_shortint<W: Write>(writer: &mut W, val: u16) -> Result<()> {

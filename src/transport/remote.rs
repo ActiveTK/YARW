@@ -245,14 +245,12 @@ impl RemoteTransport {
                         if self.options.recursive { option_string.push('r'); }
                     }
 
-                    if !option_string.is_empty() {
-                        rsync_command.push_str(&format!(" -{}", option_string));
+                    if self.options.itemize_changes {
+                        option_string.push('i');
                     }
 
-                    rsync_command.push_str(" --no-inc-recursive");
-
-                    if self.options.itemize_changes {
-                        rsync_command.push_str(" --out-format=%i");
+                    if !option_string.is_empty() {
+                        rsync_command.push_str(&format!(" -{}", option_string));
                     }
 
                     if self.options.delete {

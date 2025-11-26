@@ -27,7 +27,7 @@ impl<T> MultiplexIO<T> {
 
 impl<T: Read> MultiplexIO<T> {
     fn read_packet(&mut self) -> Result<()> {
-        eprintln!("[MPLEX] About to read header...");
+        eprintln!("[MPLEX] About to read header... (buffer has {} bytes)", self.read_buffer.len());
 
         let mut header_bytes = [0u8; 4];
         let mut total_read = 0;
@@ -93,10 +93,13 @@ impl<T: Read> Read for MultiplexIO<T> {
             return Ok(0);
         }
 
+        eprintln!("[MPLEX-READ] Request {} bytes, buffer has {}", buf.len(), self.read_buffer.len());
+
         while self.read_buffer.is_empty() {
             match self.read_packet() {
                 Ok(()) => {},
                 Err(RsyncError::Io(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                    eprintln!("[MPLEX-READ] Hit EOF, returning 0");
                     return Ok(0);
                 },
                 Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())),
@@ -107,6 +110,7 @@ impl<T: Read> Read for MultiplexIO<T> {
         for i in 0..len {
             buf[i] = self.read_buffer.pop_front().unwrap();
         }
+        eprintln!("[MPLEX-READ] Returning {} bytes, buffer now has {}", len, self.read_buffer.len());
         Ok(len)
     }
 }
