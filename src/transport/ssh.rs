@@ -197,7 +197,18 @@ impl std::io::Write for SshChannel {
 
     fn flush(&mut self) -> std::io::Result<()> {
         eprintln!("[SSH] Flush called");
-        Ok(())
+        let handle = tokio::runtime::Handle::try_current()
+            .expect("must be called from within a tokio runtime");
+
+        tokio::task::block_in_place(|| {
+            handle.block_on(async {
+                for _ in 0..10 {
+                    tokio::task::yield_now().await;
+                }
+                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                Ok(())
+            })
+        })
     }
 }
 
