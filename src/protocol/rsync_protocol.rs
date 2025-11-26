@@ -143,59 +143,38 @@ pub fn read_varlong<R: Read>(reader: &mut R, min_bytes: usize) -> Result<i64> {
         1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
         2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 5, 6,
     ];
-    const IVAL64_MAX: u8 = 0xFF;
 
-    let mut b = [0u8; 9];
+    let mut b2 = vec![0u8; min_bytes];
+    reader.read_exact(&mut b2)?;
 
-    if min_bytes >= 8 {
-        eprintln!("[VARLONG] Reading with min_bytes={}", min_bytes);
-        for cnt in (0..=8).rev() {
-            b[cnt] = reader.read_u8()?;
-            eprintln!("[VARLONG] b[{}] = {:#04x}", cnt, b[cnt]);
-            if cnt == 0 && b[0] != IVAL64_MAX {
-                eprintln!("[VARLONG] Early termination at cnt=0, b[0] != 0xFF");
-                break;
-            }
+    let mut u_b = [0u8; 9];
+
+    for i in 0..min_bytes-1 {
+        u_b[i] = b2[i + 1];
+    }
+
+    let extra = INT_BYTE_EXTRA[(b2[0] / 4) as usize];
+
+    if extra > 0 {
+        let bit = 1u8 << (8 - extra);
+        let mut extra_bytes = vec![0u8; extra];
+        reader.read_exact(&mut extra_bytes)?;
+
+        for i in 0..extra {
+            u_b[min_bytes - 1 + i] = extra_bytes[i];
         }
 
-        if b[0] == IVAL64_MAX {
-            let result = i64::from_le_bytes([
-                b[1], b[2], b[3], b[4],
-                b[5], b[6], b[7], b[8],
-            ]);
-            eprintln!("[VARLONG] Read 64-bit value: {}", result);
-            return Ok(result);
-        }
+        u_b[min_bytes + extra - 1] = b2[0] & (bit - 1);
+    } else {
+        u_b[min_bytes + extra - 1] = b2[0];
     }
 
-    eprintln!("[VARLONG] Reading with min_bytes={} (fallback path)", min_bytes);
-    let mut cnt = min_bytes.saturating_sub(1);
+    let result = i64::from_le_bytes([
+        u_b[0], u_b[1], u_b[2], u_b[3],
+        u_b[4], u_b[5], u_b[6], u_b[7],
+    ]);
 
-    while cnt > 0 {
-        b[cnt] = reader.read_u8()?;
-        eprintln!("[VARLONG] b[{}] = {:#04x}, has_high_bit={}", cnt, b[cnt], (b[cnt] & 0x80) != 0);
-        if (b[cnt] & 0x80) == 0 {
-            break;
-        }
-        cnt = cnt.saturating_sub(1);
-    }
-
-    let extra = INT_BYTE_EXTRA[(b[cnt] / 4) as usize];
-    eprintln!("[VARLONG] extra={} based on b[{}]={:#04x}", extra, cnt, b[cnt]);
-
-    for i in (0..cnt).rev() {
-        b[i] = reader.read_u8()?;
-        eprintln!("[VARLONG] b[{}] = {:#04x}", i, b[i]);
-    }
-
-    for i in 0..extra {
-        b[min_bytes + i] = reader.read_u8()?;
-        eprintln!("[VARLONG] b[{}] (extra) = {:#04x}", min_bytes + i, b[min_bytes + i]);
-    }
-
-    let result = i32::from_le_bytes([b[0], b[1], b[2], b[3]]);
-    eprintln!("[VARLONG] Final result: {}", result);
-    Ok(result as i64)
+    Ok(result)
 }
 
 pub fn write_varlong30<W: Write>(writer: &mut W, val: i64) -> Result<()> {

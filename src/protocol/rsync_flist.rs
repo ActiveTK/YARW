@@ -269,8 +269,10 @@ fn recv_file_entry<R: Read>(
         f
     };
 
-    let _xflags = if use_varint_flags && (flags & XMIT_EXTENDED_FLAGS) != 0 {
-        read_varint(reader)? as u16
+    let xflags = if use_varint_flags && (flags & XMIT_EXTENDED_FLAGS) != 0 {
+        let xf = read_varint(reader)? as u16;
+        eprintln!("[FLIST] Read xflags (varint mode): {:#04x}", xf);
+        xf
     } else {
         0
     };
@@ -310,7 +312,7 @@ fn recv_file_entry<R: Read>(
     eprintln!("[FLIST] Full filename: '{}'", full_name);
 
     let len = read_varlong(reader, 3)? as u64;
-    eprintln!("[FLIST] Read file length: {}", len);
+    eprintln!("[FLIST] Read file length: {} (varlong min_bytes=3)", len);
 
     let modtime = if (flags & XMIT_SAME_TIME) != 0 {
         state.last_modtime
@@ -321,6 +323,12 @@ fn recv_file_entry<R: Read>(
     } else {
         reader.read_i32::<byteorder::LittleEndian>()? as i64
     };
+
+    const XMIT_MOD_NSEC: u16 = 1 << 2;
+    if (xflags & XMIT_MOD_NSEC) != 0 {
+        let _nsec = read_varint(reader)?;
+        eprintln!("[FLIST] Read modtime nanoseconds: {}", _nsec);
+    }
 
     let mode = if (flags & XMIT_SAME_MODE) != 0 {
         state.last_mode
