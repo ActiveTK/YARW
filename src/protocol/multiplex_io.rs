@@ -80,6 +80,18 @@ impl<T: Read> MultiplexIO<T> {
         eprintln!("[MPLEX] Reading {} bytes of data", length);
         let mut data = vec![0u8; length];
         self.inner.read_exact(&mut data)?;
+
+        if length <= 200 {
+            eprintln!("[MPLEX] Hex dump of data:");
+            for (i, chunk) in data.chunks(16).enumerate() {
+                eprint!("  {:04x}: ", i * 16);
+                for byte in chunk {
+                    eprint!("{:02x} ", byte);
+                }
+                eprintln!();
+            }
+        }
+
         self.read_buffer.extend(data);
         eprintln!("[MPLEX] Buffer now has {} bytes", self.read_buffer.len());
 

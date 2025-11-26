@@ -308,12 +308,15 @@ fn recv_file_entry<R: Read>(
     }
     full_name.push_str(&String::from_utf8_lossy(&path_bytes));
 
-    let len = read_varlong30(reader)? as u64;
+    let len = read_varlong(reader, 3)? as u64;
+    eprintln!("[FLIST] Read file length: {}", len);
 
     let modtime = if (flags & XMIT_SAME_TIME) != 0 {
         state.last_modtime
     } else if protocol_version >= 30 {
-        read_varlong30(reader)?
+        let mt = read_varlong(reader, 4)?;
+        eprintln!("[FLIST] Read modtime: {}", mt);
+        mt
     } else {
         reader.read_i32::<byteorder::LittleEndian>()? as i64
     };
