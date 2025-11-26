@@ -307,6 +307,7 @@ fn recv_file_entry<R: Read>(
         full_name.push_str(&state.last_name[..common_prefix_len]);
     }
     full_name.push_str(&String::from_utf8_lossy(&path_bytes));
+    eprintln!("[FLIST] Full filename: '{}'", full_name);
 
     let len = read_varlong(reader, 3)? as u64;
     eprintln!("[FLIST] Read file length: {}", len);
@@ -324,21 +325,35 @@ fn recv_file_entry<R: Read>(
     let mode = if (flags & XMIT_SAME_MODE) != 0 {
         state.last_mode
     } else {
-        reader.read_u32::<byteorder::LittleEndian>()?
+        let m = reader.read_u32::<byteorder::LittleEndian>()?;
+        eprintln!("[FLIST] Read mode: {:#08x} (type: {})", m,
+            if (m & 0o170000) == 0o040000 { "directory" }
+            else if (m & 0o170000) == 0o100000 { "regular file" }
+            else if (m & 0o170000) == 0o120000 { "symlink" }
+            else if (m & 0o170000) == 0o060000 { "block device" }
+            else if (m & 0o170000) == 0o020000 { "char device" }
+            else { "other" });
+        m
     };
 
     let uid = if (flags & XMIT_SAME_UID) != 0 {
+        eprintln!("[FLIST] UID: {} (same as last)", state.last_uid);
         state.last_uid
     } else if protocol_version >= 30 {
-        read_varint(reader)? as u32
+        let u = read_varint(reader)? as u32;
+        eprintln!("[FLIST] Read UID: {}", u);
+        u
     } else {
         reader.read_u32::<byteorder::LittleEndian>()?
     };
 
     let gid = if (flags & XMIT_SAME_GID) != 0 {
+        eprintln!("[FLIST] GID: {} (same as last)", state.last_gid);
         state.last_gid
     } else if protocol_version >= 30 {
-        read_varint(reader)? as u32
+        let g = read_varint(reader)? as u32;
+        eprintln!("[FLIST] Read GID: {}", g);
+        g
     } else {
         reader.read_u32::<byteorder::LittleEndian>()?
     };
