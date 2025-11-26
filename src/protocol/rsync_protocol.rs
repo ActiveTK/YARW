@@ -102,17 +102,38 @@ pub fn write_varint<W: Write>(writer: &mut W, val: i64) -> Result<()> {
 }
 
 pub fn read_varint<R: Read>(reader: &mut R) -> Result<i64> {
-    let first_byte = reader.read_u8()?;
+    const INT_BYTE_EXTRA: [usize; 64] = [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 5, 6,
+    ];
 
-    match first_byte {
-        0..=127 => Ok(first_byte as i64),
-        0x80 => Ok(reader.read_i8()? as i64),
-        0x81 => Ok(reader.read_i16::<LittleEndian>()? as i64),
-        0x82 => Ok(reader.read_i16::<LittleEndian>()? as i64),
-        0x83 => Ok(reader.read_i32::<LittleEndian>()? as i64),
-        0x84 => Ok(reader.read_i64::<LittleEndian>()?),
-        _ => Err(RsyncError::Other(format!("Invalid varint first byte: {}", first_byte))),
+    let ch = reader.read_u8()?;
+    let extra = INT_BYTE_EXTRA[(ch / 4) as usize];
+
+    if extra == 0 {
+        return Ok(ch as i64);
     }
+
+    let bit = 1u8 << (8 - extra);
+    let mut bytes = vec![0u8; extra + 1];
+
+    reader.read_exact(&mut bytes[0..extra])?;
+    bytes[extra] = ch & (bit - 1);
+
+    let mut result = i32::from_le_bytes([
+        bytes.get(0).copied().unwrap_or(0),
+        bytes.get(1).copied().unwrap_or(0),
+        bytes.get(2).copied().unwrap_or(0),
+        bytes.get(3).copied().unwrap_or(0),
+    ]);
+
+    if result & 0x80000000_u32 as i32 != 0 {
+        result |= !0x7fffffff;
+    }
+
+    Ok(result as i64)
 }
 
 pub fn write_varlong30<W: Write>(writer: &mut W, val: i64) -> Result<()> {
