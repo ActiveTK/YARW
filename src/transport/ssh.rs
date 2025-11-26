@@ -190,6 +190,11 @@ impl std::io::Write for SshChannel {
                     .data(buf)
                     .await
                     .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+
+                for _ in 0..20 {
+                    tokio::task::yield_now().await;
+                }
+
                 Ok(buf.len())
             })
         })
@@ -202,10 +207,22 @@ impl std::io::Write for SshChannel {
 
         tokio::task::block_in_place(|| {
             handle.block_on(async {
-                for _ in 0..10 {
-                    tokio::task::yield_now().await;
+                eprintln!("[SSH] Flush: attempting to force send by checking channel state");
+
+                tokio::select! {
+                    msg = self.channel.wait() => {
+                        if let Some(ChannelMsg::ExtendedData { ref data, ext: _ }) = msg {
+                            let stderr_msg = String::from_utf8_lossy(data);
+                            eprintln!("[SSH STDERR during flush] {}", stderr_msg);
+                        } else {
+                            eprintln!("[SSH] Flush: received message during flush: {:?}", msg);
+                        }
+                    }
+                    _ = tokio::time::sleep(tokio::time::Duration::from_millis(500)) => {
+                        eprintln!("[SSH] Flush: timeout (expected - no response needed)");
+                    }
                 }
-                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
                 Ok(())
             })
         })

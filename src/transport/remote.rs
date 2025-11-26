@@ -281,12 +281,9 @@ impl RemoteTransport {
                             verbose.print_verbose(&format!("Protocol versions: local={}, remote={}, negotiated={}", PROTOCOL_VERSION_MAX, remote_version, negotiated_version));
 
                             let (compat_flags, do_negotiated_strings) = if negotiated_version >= 30 {
-                                verbose.print_verbose("Exchanging compatibility flags...");
+                                verbose.print_verbose("Receiving compatibility flags from server...");
                                 let remote_compat_flags = CompatFlags::read(&mut channel)?;
-                                verbose.print_verbose(&format!("Remote compat flags: 0x{:02x}", remote_compat_flags.flags));
-
-                                let flags = CompatFlags::new_for_protocol_31();
-                                flags.write(&mut channel)?;
+                                verbose.print_verbose(&format!("Server compat flags: 0x{:02x}", remote_compat_flags.flags));
 
                                 let do_neg_strings = remote_compat_flags.has_flag(CF_VARINT_FLIST_FLAGS);
                                 verbose.print_verbose(&format!("Negotiated strings: {}", do_neg_strings));
@@ -324,7 +321,7 @@ impl RemoteTransport {
 
                             let use_multiplex = negotiated_version >= 23;
                             if use_multiplex {
-                                verbose.print_verbose("Starting multiplex I/O for reads...");
+                                verbose.print_verbose("Starting multiplex I/O...");
                                 let mut channel = MultiplexIO::new(channel);
 
                                 verbose.print_verbose("Sending filter list...");

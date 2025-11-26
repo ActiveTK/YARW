@@ -1,6 +1,6 @@
 use std::io::{Read, Write};
 use std::collections::VecDeque;
-use byteorder::{ReadBytesExt, WriteBytesExt, BigEndian};
+use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
 use crate::error::{Result, RsyncError};
 
 const MPLEX_BASE: u8 = 7;
@@ -53,7 +53,7 @@ impl<T: Read> MultiplexIO<T> {
         eprintln!("[MPLEX] Read header bytes: {:02x} {:02x} {:02x} {:02x}",
             header_bytes[0], header_bytes[1], header_bytes[2], header_bytes[3]);
 
-        let header = u32::from_be_bytes(header_bytes);
+        let header = u32::from_le_bytes(header_bytes);
 
         let tag = (header >> 24) as u8;
         let length = (header & 0x00FFFFFF) as usize;
@@ -113,7 +113,20 @@ impl<T: Read> Read for MultiplexIO<T> {
 
 impl<T: Write> Write for MultiplexIO<T> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.inner.write(buf)
+        if buf.is_empty() {
+            return Ok(0);
+        }
+
+        let len = buf.len();
+        let tag = MPLEX_BASE + MSG_DATA;
+        let header = ((tag as u32) << 24) | (len as u32 & 0x00FFFFFF);
+
+        eprintln!("[MPLEX-WRITE] Sending multiplexed data: tag={}, length={}", tag, len);
+
+        self.inner.write_all(&header.to_le_bytes())?;
+        self.inner.write_all(buf)?;
+
+        Ok(len)
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
