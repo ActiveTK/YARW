@@ -58,7 +58,7 @@ impl RemoteTransport {
         verbose.print_verbose("Starting file transfer...");
 
         if is_remote_source {
-            use crate::protocol::{write_ndx, read_ndx, NdxState, NDX_DONE, write_varint, read_varint};
+            use crate::protocol::{write_ndx, read_ndx_and_attrs, NdxState, NDX_DONE, read_varint};
 
             verbose.print_verbose("Acting as generator: requesting files...");
             let mut ndx_state = NdxState::new();
@@ -92,11 +92,13 @@ impl RemoteTransport {
             let mut ndx_state_recv = NdxState::new();
 
             loop {
-                let file_ndx = read_ndx(&mut channel, &mut ndx_state_recv, negotiated_version)?;
+                let (file_ndx, iflags, _fnamecmp_type, _xname) = read_ndx_and_attrs(&mut channel, &mut ndx_state_recv, negotiated_version)?;
                 if file_ndx == NDX_DONE {
                     verbose.print_verbose("Received NDX_DONE from sender");
                     break;
                 }
+
+                verbose.print_verbose(&format!("Received file index: {}, iflags: {:#06x}", file_ndx, iflags));
 
                 if file_ndx < 0 || file_ndx >= remote_file_entries.len() as i32 {
                     return Err(RsyncError::Other(format!("Invalid file index from sender: {}", file_ndx)));
@@ -302,6 +304,8 @@ impl RemoteTransport {
                     if self.options.delete {
                         rsync_command.push_str(" --delete");
                     }
+
+                    rsync_command.push_str(" --no-inc-recursive");
 
                     rsync_command.push_str(" .");
                     rsync_command.push(' ');

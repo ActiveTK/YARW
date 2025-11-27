@@ -27,6 +27,23 @@ pub const XMIT_HLINK_FIRST: u16 = 1 << 12;
 pub const XMIT_MOD_NSEC: u16 = 1 << 13;
 pub const XMIT_SAME_ATIME: u16 = 1 << 14;
 
+pub const ITEM_REPORT_ATIME: u16 = 1 << 0;
+pub const ITEM_REPORT_CHANGE: u16 = 1 << 1;
+pub const ITEM_REPORT_SIZE: u16 = 1 << 2;
+pub const ITEM_REPORT_TIMEFAIL: u16 = 1 << 2;
+pub const ITEM_REPORT_TIME: u16 = 1 << 3;
+pub const ITEM_REPORT_PERMS: u16 = 1 << 4;
+pub const ITEM_REPORT_OWNER: u16 = 1 << 5;
+pub const ITEM_REPORT_GROUP: u16 = 1 << 6;
+pub const ITEM_REPORT_ACL: u16 = 1 << 7;
+pub const ITEM_REPORT_XATTR: u16 = 1 << 8;
+pub const ITEM_REPORT_CRTIME: u16 = 1 << 10;
+pub const ITEM_BASIS_TYPE_FOLLOWS: u16 = 1 << 11;
+pub const ITEM_XNAME_FOLLOWS: u16 = 1 << 12;
+pub const ITEM_IS_NEW: u16 = 1 << 13;
+pub const ITEM_LOCAL_CHANGE: u16 = 1 << 14;
+pub const ITEM_TRANSFER: u16 = 1 << 15;
+
 pub const MIN_FILECNT_LOOKAHEAD: usize = 1000;
 
 pub struct CompatFlags {
@@ -381,38 +398,90 @@ pub fn read_ndx<R: Read>(reader: &mut R, state: &mut NdxState, protocol_version:
         return Ok(reader.read_i32::<LittleEndian>()?);
     }
 
-    let cnt = reader.read_u8()?;
+    let mut b = reader.read_u8()?;
+    eprintln!("[NDX] Read first byte: 0x{:02x}", b);
 
-    if cnt == 0 {
+    let is_negative = if b == 0xFF {
+        eprintln!("[NDX] b==0xFF, reading next byte...");
+        b = reader.read_u8()?;
+        eprintln!("[NDX] Read second byte: 0x{:02x}", b);
+        true
+    } else if b == 0 {
+        eprintln!("[NDX] b==0, returning NDX_DONE");
         return Ok(NDX_DONE);
-    }
+    } else {
+        false
+    };
 
-    if cnt == 0xFF {
-        let ndx = reader.read_i32::<LittleEndian>()?;
-        if ndx >= 0 {
-            state.prev_negative = -ndx;
-            return Ok(ndx);
+    let num = if b == 0xFE {
+        eprintln!("[NDX] b==0xFE, reading 2 more bytes...");
+        let b0 = reader.read_u8()?;
+        let b1 = reader.read_u8()?;
+        eprintln!("[NDX] b0=0x{:02x}, b1=0x{:02x}", b0, b1);
+
+        if (b0 & 0x80) != 0 {
+            eprintln!("[NDX] b0 & 0x80, reading 2 more bytes (4-byte mode)...");
+            let b3 = b0 & !0x80;
+            let b2 = reader.read_u8()?;
+            let b3_new = reader.read_u8()?;
+            eprintln!("[NDX] b2=0x{:02x}, b3_new=0x{:02x}", b2, b3_new);
+
+            let value = (b1 as i32) | ((b2 as i32) << 8) | ((b3_new as i32) << 16) | ((b3 as i32) << 24);
+            eprintln!("[NDX] 4-byte value: {}", value);
+            value
+        } else {
+            let value = ((b0 as i32) << 8) + (b1 as i32);
+            let prev = if is_negative { state.prev_negative } else { state.prev_positive };
+            let result = value + prev;
+            eprintln!("[NDX] 2-byte value: {}, prev: {}, result: {}", value, prev, result);
+            result
         }
-        state.prev_negative = ndx;
-        return Ok(-ndx);
+    } else {
+        let prev = if is_negative { state.prev_negative } else { state.prev_positive };
+        let result = (b as i32) + prev;
+        eprintln!("[NDX] Single byte: {}, prev: {}, result: {}", b, prev, result);
+        result
+    };
+
+    if is_negative {
+        state.prev_negative = num;
+        eprintln!("[NDX] Final (negative): -{}", -num);
+        Ok(-num)
+    } else {
+        state.prev_positive = num;
+        eprintln!("[NDX] Final (positive): {}", num);
+        Ok(num)
+    }
+}
+
+pub fn read_ndx_and_attrs<R: Read>(
+    reader: &mut R,
+    state: &mut NdxState,
+    protocol_version: i32,
+) -> Result<(i32, u16, Option<u8>, Option<String>)> {
+    let ndx = read_ndx(reader, state, protocol_version)?;
+
+    if ndx == NDX_DONE {
+        return Ok((ndx, 0, None, None));
     }
 
-    if cnt == 0xFE {
-        let first_byte = reader.read_u8()? as u32;
-        let second_byte = reader.read_u8()? as u32;
-        let value = first_byte | (second_byte << 8);
+    let iflags = if protocol_version >= 29 {
+        read_shortint(reader)?
+    } else {
+        0
+    };
 
-        if (value & 0x8000) != 0 {
-            let high_bytes = reader.read_u16::<LittleEndian>()? as u32;
-            let ndx = (value & 0x7FFF) | (high_bytes << 16);
-            state.prev_positive = ndx as i32;
-            return Ok(ndx as i32);
-        }
+    let fnamecmp_type = if (iflags & ITEM_BASIS_TYPE_FOLLOWS) != 0 {
+        Some(reader.read_u8()?)
+    } else {
+        None
+    };
 
-        state.prev_positive += value as i32;
-        return Ok(state.prev_positive);
-    }
+    let xname = if (iflags & ITEM_XNAME_FOLLOWS) != 0 {
+        Some(read_vstring(reader)?)
+    } else {
+        None
+    };
 
-    state.prev_positive += cnt as i32;
-    Ok(state.prev_positive)
+    Ok((ndx, iflags, fnamecmp_type, xname))
 }
