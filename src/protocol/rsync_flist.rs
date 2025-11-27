@@ -324,8 +324,7 @@ fn recv_file_entry<R: Read>(
         reader.read_i32::<byteorder::LittleEndian>()? as i64
     };
 
-    const XMIT_MOD_NSEC: u16 = 1 << 2;
-    if (xflags & XMIT_MOD_NSEC) != 0 {
+    if protocol_version >= 30 && (flags & XMIT_SAME_TIME) == 0 {
         let _nsec = read_varint(reader)?;
         eprintln!("[FLIST] Read modtime nanoseconds: {}", _nsec);
     }
@@ -350,6 +349,15 @@ fn recv_file_entry<R: Read>(
     } else if protocol_version >= 30 {
         let u = read_varint(reader)? as u32;
         eprintln!("[FLIST] Read UID: {}", u);
+        if protocol_version >= 30 && (flags & XMIT_SAME_UID) == 0 && (flags & XMIT_USER_NAME_FOLLOWS) != 0 {
+            let name_len = reader.read_u8()? as usize;
+            if name_len > 0 {
+                let mut name_bytes = vec![0u8; name_len];
+                reader.read_exact(&mut name_bytes)?;
+                let username = String::from_utf8_lossy(&name_bytes);
+                eprintln!("[FLIST] Read username: '{}'", username);
+            }
+        }
         u
     } else {
         reader.read_u32::<byteorder::LittleEndian>()?
@@ -361,6 +369,15 @@ fn recv_file_entry<R: Read>(
     } else if protocol_version >= 30 {
         let g = read_varint(reader)? as u32;
         eprintln!("[FLIST] Read GID: {}", g);
+        if protocol_version >= 30 && (flags & XMIT_SAME_GID) == 0 && (flags & XMIT_GROUP_NAME_FOLLOWS) != 0 {
+            let name_len = reader.read_u8()? as usize;
+            if name_len > 0 {
+                let mut name_bytes = vec![0u8; name_len];
+                reader.read_exact(&mut name_bytes)?;
+                let groupname = String::from_utf8_lossy(&name_bytes);
+                eprintln!("[FLIST] Read groupname: '{}'", groupname);
+            }
+        }
         g
     } else {
         reader.read_u32::<byteorder::LittleEndian>()?

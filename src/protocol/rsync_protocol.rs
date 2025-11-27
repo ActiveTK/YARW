@@ -322,3 +322,103 @@ pub fn read_vstring<R: Read>(reader: &mut R) -> Result<String> {
     String::from_utf8(buf)
         .map_err(|e| RsyncError::Other(format!("Invalid UTF-8 in vstring: {}", e)))
 }
+
+pub const NDX_DONE: i32 = -1;
+pub const NDX_FLIST_EOF: i32 = -2;
+
+pub struct NdxState {
+    prev_positive: i32,
+    prev_negative: i32,
+}
+
+impl NdxState {
+    pub fn new() -> Self {
+        Self {
+            prev_positive: -1,
+            prev_negative: -1,
+        }
+    }
+}
+
+pub fn write_ndx<W: Write>(writer: &mut W, ndx: i32, state: &mut NdxState, protocol_version: i32) -> Result<()> {
+    if protocol_version < 30 {
+        writer.write_i32::<LittleEndian>(ndx)?;
+        return Ok(());
+    }
+
+    let diff: i32;
+    let cnt: u8;
+
+    if ndx >= 0 {
+        diff = ndx - state.prev_positive;
+        state.prev_positive = ndx;
+    } else if ndx == NDX_DONE {
+        writer.write_u8(0)?;
+        return Ok(());
+    } else {
+        diff = state.prev_negative - ndx;
+        state.prev_negative = ndx;
+        if diff < 1 || diff > 0xFE {
+            writer.write_u8(0xFF)?;
+            writer.write_i32::<LittleEndian>(ndx)?;
+            return Ok(());
+        }
+        cnt = diff as u8;
+        writer.write_u8(cnt)?;
+        return Ok(());
+    }
+
+    if diff < 0xFE && diff > 0 {
+        cnt = diff as u8;
+        writer.write_u8(cnt)?;
+    } else if diff < 0 || diff > 0x7FFF {
+        writer.write_u8(0xFE)?;
+        writer.write_i32::<LittleEndian>(ndx | 0x80000000u32 as i32)?;
+    } else {
+        writer.write_u8(0xFE)?;
+        writer.write_u16::<LittleEndian>(diff as u16)?;
+    }
+
+    Ok(())
+}
+
+pub fn read_ndx<R: Read>(reader: &mut R, state: &mut NdxState, protocol_version: i32) -> Result<i32> {
+    if protocol_version < 30 {
+        return Ok(reader.read_i32::<LittleEndian>()?);
+    }
+
+    let cnt = reader.read_u8()?;
+
+    if cnt == 0 {
+        return Ok(NDX_DONE);
+    }
+
+    if cnt == 0xFF {
+        let ndx = reader.read_i32::<LittleEndian>()?;
+        if ndx >= 0 {
+            state.prev_negative = -ndx;
+            return Ok(ndx);
+        }
+        state.prev_negative = ndx;
+        return Ok(-ndx);
+    }
+
+    if cnt == 0xFE {
+        let first_byte = reader.read_u8()? as u32;
+        let second_byte = reader.read_u8()? as u32;
+        let value = first_byte | (second_byte << 8);
+
+        if (value & 0x8000) != 0 {
+            let high_bytes = reader.read_u16::<LittleEndian>()? as u32;
+            let ndx = (value & 0x7FFF) | (high_bytes << 16);
+            state.prev_positive = ndx as i32;
+            return Ok(ndx as i32);
+        }
+
+        state.prev_positive += value as i32;
+        return Ok(state.prev_positive);
+    }
+
+    state.prev_positive += cnt as i32;
+    Ok(state.prev_positive)
+}

@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::io::{Read, Write};
 use std::fs;
 use std::time::Instant;
+use byteorder::WriteBytesExt;
 
 pub struct RemoteTransport {
     options: Options,
@@ -57,8 +58,12 @@ impl RemoteTransport {
         verbose.print_verbose("Starting file transfer...");
 
         if is_remote_source {
-            verbose.print_verbose("Receiving files from remote...");
-            for remote_entry in &remote_file_entries {
+            use crate::protocol::{write_ndx, read_ndx, NdxState, NDX_DONE, write_varint, read_varint};
+
+            verbose.print_verbose("Acting as generator: requesting files...");
+            let mut ndx_state = NdxState::new();
+
+            for (idx, remote_entry) in remote_file_entries.iter().enumerate() {
                 if remote_entry.is_dir {
                     let dir_path = local_path.join(&remote_entry.path);
                     if !dir_path.exists() {
@@ -68,7 +73,37 @@ impl RemoteTransport {
                     continue;
                 }
 
-                verbose.print_basic(&format!("Receiving: {}", remote_entry.path.display()));
+                verbose.print_verbose(&format!("Requesting file {}: {}", idx, remote_entry.path.display()));
+                write_ndx(&mut channel, idx as i32, &mut ndx_state, negotiated_version)?;
+
+                channel.write_i32::<byteorder::LittleEndian>(0)?;
+                channel.write_i32::<byteorder::LittleEndian>(0)?;
+                if negotiated_version >= 27 {
+                    channel.write_i32::<byteorder::LittleEndian>(0)?;
+                }
+                channel.write_i32::<byteorder::LittleEndian>(0)?;
+            }
+
+            verbose.print_verbose("Sending NDX_DONE to complete generator phase");
+            write_ndx(&mut channel, NDX_DONE, &mut ndx_state, negotiated_version)?;
+            channel.flush()?;
+
+            verbose.print_verbose("Acting as receiver: receiving file data...");
+            let mut ndx_state_recv = NdxState::new();
+
+            loop {
+                let file_ndx = read_ndx(&mut channel, &mut ndx_state_recv, negotiated_version)?;
+                if file_ndx == NDX_DONE {
+                    verbose.print_verbose("Received NDX_DONE from sender");
+                    break;
+                }
+
+                if file_ndx < 0 || file_ndx >= remote_file_entries.len() as i32 {
+                    return Err(RsyncError::Other(format!("Invalid file index from sender: {}", file_ndx)));
+                }
+
+                let remote_entry = &remote_file_entries[file_ndx as usize];
+                verbose.print_basic(&format!("Receiving file {}: {}", file_ndx, remote_entry.path.display()));
 
                 let file_path = local_path.join(&remote_entry.path);
                 if let Some(parent) = file_path.parent() {
@@ -77,18 +112,29 @@ impl RemoteTransport {
                     }
                 }
 
-                use crate::protocol::read_varlong30;
-                let file_size = read_varlong30(&mut channel)? as usize;
+                let mut file_data = Vec::new();
+                loop {
+                    let token = read_varint(&mut channel)?;
+                    if token == 0 {
+                        break;
+                    }
 
-                let mut file_data = vec![0u8; file_size];
-                channel.read_exact(&mut file_data)?;
+                    if token > 0 {
+                        let len = token as usize;
+                        let mut chunk = vec![0u8; len];
+                        channel.read_exact(&mut chunk)?;
+                        file_data.extend_from_slice(&chunk);
+                    } else {
+                        return Err(RsyncError::Other(format!("Unexpected negative token: {}", token)));
+                    }
+                }
 
                 fs::write(&file_path, &file_data)?;
 
                 stats.transferred_files += 1;
-                stats.transferred_bytes += file_size as u64;
+                stats.transferred_bytes += file_data.len() as u64;
 
-                verbose.print_basic(&format!("  Received {} bytes", file_size));
+                verbose.print_basic(&format!("  Received {} bytes", file_data.len()));
             }
         } else {
             verbose.print_verbose("Sending files to remote...");
@@ -376,8 +422,12 @@ impl RemoteTransport {
                             verbose.print_verbose("Starting file transfer...");
 
                             if is_remote_source {
-                                verbose.print_verbose("Receiving files from remote...");
-                                for remote_entry in &remote_file_entries {
+                                use crate::protocol::{write_ndx, read_ndx, NdxState, NDX_DONE, write_varint, read_varint};
+
+                                verbose.print_verbose("Acting as generator: requesting files...");
+                                let mut ndx_state = NdxState::new();
+
+                                for (idx, remote_entry) in remote_file_entries.iter().enumerate() {
                                     if remote_entry.is_dir {
                                         let dir_path = local_path.join(&remote_entry.path);
                                         if !dir_path.exists() {
@@ -387,7 +437,37 @@ impl RemoteTransport {
                                         continue;
                                     }
 
-                                    verbose.print_basic(&format!("Receiving: {}", remote_entry.path.display()));
+                                    verbose.print_verbose(&format!("Requesting file {}: {}", idx, remote_entry.path.display()));
+                                    write_ndx(&mut channel, idx as i32, &mut ndx_state, negotiated_version)?;
+
+                                    channel.write_i32::<byteorder::LittleEndian>(0)?;
+                                    channel.write_i32::<byteorder::LittleEndian>(0)?;
+                                    if negotiated_version >= 27 {
+                                        channel.write_i32::<byteorder::LittleEndian>(0)?;
+                                    }
+                                    channel.write_i32::<byteorder::LittleEndian>(0)?;
+                                }
+
+                                verbose.print_verbose("Sending NDX_DONE to complete generator phase");
+                                write_ndx(&mut channel, NDX_DONE, &mut ndx_state, negotiated_version)?;
+                                channel.flush()?;
+
+                                verbose.print_verbose("Acting as receiver: receiving file data...");
+                                let mut ndx_state_recv = NdxState::new();
+
+                                loop {
+                                    let file_ndx = read_ndx(&mut channel, &mut ndx_state_recv, negotiated_version)?;
+                                    if file_ndx == NDX_DONE {
+                                        verbose.print_verbose("Received NDX_DONE from sender");
+                                        break;
+                                    }
+
+                                    if file_ndx < 0 || file_ndx >= remote_file_entries.len() as i32 {
+                                        return Err(RsyncError::Other(format!("Invalid file index from sender: {}", file_ndx)));
+                                    }
+
+                                    let remote_entry = &remote_file_entries[file_ndx as usize];
+                                    verbose.print_basic(&format!("Receiving file {}: {}", file_ndx, remote_entry.path.display()));
 
                                     let file_path = local_path.join(&remote_entry.path);
                                     if let Some(parent) = file_path.parent() {
@@ -396,18 +476,29 @@ impl RemoteTransport {
                                         }
                                     }
 
-                                    use crate::protocol::read_varlong30;
-                                    let file_size = read_varlong30(&mut channel)? as usize;
+                                    let mut file_data = Vec::new();
+                                    loop {
+                                        let token = read_varint(&mut channel)?;
+                                        if token == 0 {
+                                            break;
+                                        }
 
-                                    let mut file_data = vec![0u8; file_size];
-                                    channel.read_exact(&mut file_data)?;
+                                        if token > 0 {
+                                            let len = token as usize;
+                                            let mut chunk = vec![0u8; len];
+                                            channel.read_exact(&mut chunk)?;
+                                            file_data.extend_from_slice(&chunk);
+                                        } else {
+                                            return Err(RsyncError::Other(format!("Unexpected negative token: {}", token)));
+                                        }
+                                    }
 
                                     fs::write(&file_path, &file_data)?;
 
                                     stats.transferred_files += 1;
-                                    stats.transferred_bytes += file_size as u64;
+                                    stats.transferred_bytes += file_data.len() as u64;
 
-                                    verbose.print_basic(&format!("  Received {} bytes", file_size));
+                                    verbose.print_basic(&format!("  Received {} bytes", file_data.len()));
                                 }
                             } else {
                                 verbose.print_verbose("Sending files to remote...");
