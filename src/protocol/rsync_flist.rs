@@ -388,7 +388,7 @@ fn recv_file_entry<R: Read>(
         eprintln!("[FLIST] Read hardlink first index: {}", hlink_ndx);
     }
 
-    let is_dir = (flags & XMIT_TOP_DIR) != 0;
+    let is_dir = (mode & 0o170000) == 0o040000;
     let is_symlink = (mode & 0o170000) == 0o120000;
 
     let symlink_target = if is_symlink {
