@@ -401,6 +401,9 @@ fn recv_file_entry<R: Read>(
     state.last_uid = uid;
     state.last_gid = gid;
 
+    eprintln!("[FLIST] Completed entry: {}, is_dir={}, uid={}, gid={}", full_name, is_dir, uid, gid);
+    eprintln!("[FLIST] Flags were: {:#06x}, protocol={}", flags, protocol_version);
+
     Ok(Some(FileEntry {
         path: PathBuf::from(full_name),
         mode,
