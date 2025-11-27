@@ -21,21 +21,11 @@ pub const XMIT_LONG_NAME: u16 = 1 << 6;
 pub const XMIT_SAME_TIME: u16 = 1 << 7;
 pub const XMIT_SAME_RDEV_MAJOR: u16 = 1 << 8;
 pub const XMIT_HLINKED: u16 = 1 << 9;
-pub const XMIT_HLINK_FIRST: u16 = 1 << 10;
-pub const XMIT_IO_ERROR_ENDLIST: u16 = 1 << 11;
-pub const XMIT_SAME_DEV_MAJOR: u16 = 1 << 12;
-pub const XMIT_RDEV_MINOR_8_PRE30: u16 = 1 << 13;
-pub const XMIT_GROUP_NAME_FOLLOWS: u16 = 1 << 14;
-pub const XMIT_USER_NAME_FOLLOWS: u16 = 1 << 15;
-
-pub const XMIT_SAME_UID_8: u16 = 1 << 0;
-pub const XMIT_SAME_GID_8: u16 = 1 << 1;
-pub const XMIT_MOD_NSEC: u16 = 1 << 2;
-pub const XMIT_SAME_ATIME: u16 = 1 << 3;
-pub const XMIT_UNUSED_4: u16 = 1 << 4;
-pub const XMIT_SAME_ACL: u16 = 1 << 5;
-pub const XMIT_SAME_XATTR: u16 = 1 << 6;
-pub const XMIT_CRTIME_EQ_MTIME: u16 = 1 << 7;
+pub const XMIT_USER_NAME_FOLLOWS: u16 = 1 << 10;
+pub const XMIT_GROUP_NAME_FOLLOWS: u16 = 1 << 11;
+pub const XMIT_HLINK_FIRST: u16 = 1 << 12;
+pub const XMIT_MOD_NSEC: u16 = 1 << 13;
+pub const XMIT_SAME_ATIME: u16 = 1 << 14;
 
 pub const MIN_FILECNT_LOOKAHEAD: usize = 1000;
 
@@ -146,6 +136,7 @@ pub fn read_varlong<R: Read>(reader: &mut R, min_bytes: usize) -> Result<i64> {
 
     let mut b2 = vec![0u8; min_bytes];
     reader.read_exact(&mut b2)?;
+    eprintln!("[VARLONG] min_bytes={}, b2={:02x?}", min_bytes, b2);
 
     let mut u_b = [0u8; 9];
 
@@ -154,11 +145,13 @@ pub fn read_varlong<R: Read>(reader: &mut R, min_bytes: usize) -> Result<i64> {
     }
 
     let extra = INT_BYTE_EXTRA[(b2[0] / 4) as usize];
+    eprintln!("[VARLONG] b2[0]={:#04x}, extra={}", b2[0], extra);
 
     if extra > 0 {
         let bit = 1u8 << (8 - extra);
         let mut extra_bytes = vec![0u8; extra];
         reader.read_exact(&mut extra_bytes)?;
+        eprintln!("[VARLONG] extra_bytes={:02x?}", extra_bytes);
 
         for i in 0..extra {
             u_b[min_bytes - 1 + i] = extra_bytes[i];
@@ -169,10 +162,12 @@ pub fn read_varlong<R: Read>(reader: &mut R, min_bytes: usize) -> Result<i64> {
         u_b[min_bytes + extra - 1] = b2[0];
     }
 
+    eprintln!("[VARLONG] u_b={:02x?}", u_b);
     let result = i64::from_le_bytes([
         u_b[0], u_b[1], u_b[2], u_b[3],
         u_b[4], u_b[5], u_b[6], u_b[7],
     ]);
+    eprintln!("[VARLONG] result={}", result);
 
     Ok(result)
 }

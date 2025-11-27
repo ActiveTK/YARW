@@ -324,7 +324,7 @@ fn recv_file_entry<R: Read>(
         reader.read_i32::<byteorder::LittleEndian>()? as i64
     };
 
-    if protocol_version >= 30 && (flags & XMIT_SAME_TIME) == 0 {
+    if (flags & XMIT_MOD_NSEC) != 0 {
         let _nsec = read_varint(reader)?;
         eprintln!("[FLIST] Read modtime nanoseconds: {}", _nsec);
     }
@@ -382,6 +382,11 @@ fn recv_file_entry<R: Read>(
     } else {
         reader.read_u32::<byteorder::LittleEndian>()?
     };
+
+    if protocol_version >= 30 && (flags & XMIT_HLINK_FIRST) != 0 {
+        let hlink_ndx = read_varint(reader)?;
+        eprintln!("[FLIST] Read hardlink first index: {}", hlink_ndx);
+    }
 
     let is_dir = (flags & XMIT_TOP_DIR) != 0;
     let is_symlink = (mode & 0o170000) == 0o120000;
