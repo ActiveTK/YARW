@@ -58,23 +58,40 @@ impl RemoteTransport {
         verbose.print_verbose("Starting file transfer...");
 
         if is_remote_source {
-            use crate::protocol::{write_ndx, read_ndx_and_attrs, NdxState, NDX_DONE, read_varint};
+            use crate::protocol::{read_ndx_and_attrs, NdxState, NDX_DONE, recv_id_lists, write_ndx, read_sum_head, read_int};
 
-            verbose.print_verbose("Acting as generator: requesting files...");
-            let mut ndx_state = NdxState::new();
+            verbose.print_verbose("Receiving UID/GID lists...");
+            recv_id_lists(&mut channel)?;
+            verbose.print_verbose("UID/GID lists received.");
 
-            for (idx, remote_entry) in remote_file_entries.iter().enumerate() {
+            for remote_entry in &remote_file_entries {
                 if remote_entry.is_dir {
                     let dir_path = local_path.join(&remote_entry.path);
                     if !dir_path.exists() {
                         verbose.print_verbose(&format!("Creating directory: {}", dir_path.display()));
                         fs::create_dir_all(&dir_path)?;
                     }
+                }
+            }
+
+            verbose.print_verbose("Acting as generator: sending file requests...");
+            let mut ndx_state_gen = NdxState::new();
+
+            for (idx, remote_entry) in remote_file_entries.iter().enumerate() {
+                if remote_entry.is_dir {
                     continue;
                 }
 
                 verbose.print_verbose(&format!("Requesting file {}: {}", idx, remote_entry.path.display()));
-                write_ndx(&mut channel, idx as i32, &mut ndx_state, negotiated_version)?;
+
+                write_ndx(&mut channel, idx as i32, &mut ndx_state_gen, negotiated_version)?;
+
+                if negotiated_version >= 29 {
+                    use crate::protocol::{write_shortint, ITEM_TRANSFER};
+                    let iflags = ITEM_TRANSFER;
+                    write_shortint(&mut channel, iflags)?;
+                    verbose.print_verbose(&format!("  Sent iflags: {:#06x}", iflags));
+                }
 
                 channel.write_i32::<byteorder::LittleEndian>(0)?;
                 channel.write_i32::<byteorder::LittleEndian>(0)?;
@@ -85,7 +102,7 @@ impl RemoteTransport {
             }
 
             verbose.print_verbose("Sending NDX_DONE to complete generator phase");
-            write_ndx(&mut channel, NDX_DONE, &mut ndx_state, negotiated_version)?;
+            write_ndx(&mut channel, NDX_DONE, &mut ndx_state_gen, negotiated_version)?;
             channel.flush()?;
 
             verbose.print_verbose("Acting as receiver: receiving file data...");
@@ -114,20 +131,35 @@ impl RemoteTransport {
                     }
                 }
 
+                use std::io::Read;
                 let mut file_data = Vec::new();
+
+                let (sum_count, sum_blength, sum_s2length, sum_remainder) = read_sum_head(&mut channel, negotiated_version)?;
+                verbose.print_verbose(&format!("  Sum header: count={}, blength={}, s2length={}, remainder={}", sum_count, sum_blength, sum_s2length, sum_remainder));
+
+                let file_size = remote_entry.len;
+                verbose.print_verbose(&format!("  Expected file size: {} bytes", file_size));
+
+                let mut received = 0;
                 loop {
-                    let token = read_varint(&mut channel)?;
+                    let token = read_int(&mut channel)?;
+                    verbose.print_verbose(&format!("    Token: {} (received so far: {})", token, received));
+
                     if token == 0 {
+                        verbose.print_verbose("    End of file marker (token=0)");
                         break;
                     }
 
                     if token > 0 {
                         let len = token as usize;
+                        verbose.print_verbose(&format!("    Reading {} bytes of literal data", len));
                         let mut chunk = vec![0u8; len];
                         channel.read_exact(&mut chunk)?;
+                        verbose.print_verbose(&format!("    First 20 bytes: {:?}", &chunk[..chunk.len().min(20)]));
                         file_data.extend_from_slice(&chunk);
+                        received += len;
                     } else {
-                        return Err(RsyncError::Other(format!("Unexpected negative token: {}", token)));
+                        verbose.print_verbose(&format!("    Block reference: {}", -token));
                     }
                 }
 

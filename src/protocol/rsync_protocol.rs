@@ -399,57 +399,42 @@ pub fn read_ndx<R: Read>(reader: &mut R, state: &mut NdxState, protocol_version:
     }
 
     let mut b = reader.read_u8()?;
-    eprintln!("[NDX] Read first byte: 0x{:02x}", b);
 
     let is_negative = if b == 0xFF {
-        eprintln!("[NDX] b==0xFF, reading next byte...");
         b = reader.read_u8()?;
-        eprintln!("[NDX] Read second byte: 0x{:02x}", b);
         true
     } else if b == 0 {
-        eprintln!("[NDX] b==0, returning NDX_DONE");
         return Ok(NDX_DONE);
     } else {
         false
     };
 
     let num = if b == 0xFE {
-        eprintln!("[NDX] b==0xFE, reading 2 more bytes...");
         let b0 = reader.read_u8()?;
         let b1 = reader.read_u8()?;
-        eprintln!("[NDX] b0=0x{:02x}, b1=0x{:02x}", b0, b1);
 
         if (b0 & 0x80) != 0 {
-            eprintln!("[NDX] b0 & 0x80, reading 2 more bytes (4-byte mode)...");
             let b3 = b0 & !0x80;
             let b2 = reader.read_u8()?;
             let b3_new = reader.read_u8()?;
-            eprintln!("[NDX] b2=0x{:02x}, b3_new=0x{:02x}", b2, b3_new);
 
             let value = (b1 as i32) | ((b2 as i32) << 8) | ((b3_new as i32) << 16) | ((b3 as i32) << 24);
-            eprintln!("[NDX] 4-byte value: {}", value);
             value
         } else {
             let value = ((b0 as i32) << 8) + (b1 as i32);
             let prev = if is_negative { state.prev_negative } else { state.prev_positive };
-            let result = value + prev;
-            eprintln!("[NDX] 2-byte value: {}, prev: {}, result: {}", value, prev, result);
-            result
+            value + prev
         }
     } else {
         let prev = if is_negative { state.prev_negative } else { state.prev_positive };
-        let result = (b as i32) + prev;
-        eprintln!("[NDX] Single byte: {}, prev: {}, result: {}", b, prev, result);
-        result
+        (b as i32) + prev
     };
 
     if is_negative {
         state.prev_negative = num;
-        eprintln!("[NDX] Final (negative): -{}", -num);
         Ok(-num)
     } else {
         state.prev_positive = num;
-        eprintln!("[NDX] Final (positive): {}", num);
         Ok(num)
     }
 }
@@ -484,4 +469,49 @@ pub fn read_ndx_and_attrs<R: Read>(
     };
 
     Ok((ndx, iflags, fnamecmp_type, xname))
+}
+
+pub fn recv_id_lists<R: Read>(reader: &mut R) -> Result<()> {
+    loop {
+        let id = read_varint30(reader)?;
+        if id == 0 {
+            break;
+        }
+        let len = reader.read_u8()? as usize;
+        if len > 0 {
+            let mut name_bytes = vec![0u8; len];
+            reader.read_exact(&mut name_bytes)?;
+        }
+    }
+
+    loop {
+        let id = read_varint30(reader)?;
+        if id == 0 {
+            break;
+        }
+        let len = reader.read_u8()? as usize;
+        if len > 0 {
+            let mut name_bytes = vec![0u8; len];
+            reader.read_exact(&mut name_bytes)?;
+        }
+    }
+
+    Ok(())
+}
+
+pub fn read_int<R: Read>(reader: &mut R) -> Result<i32> {
+    Ok(reader.read_i32::<LittleEndian>()?)
+}
+
+pub fn read_sum_head<R: Read>(reader: &mut R, protocol_version: i32) -> Result<(i32, i32, i32, i32)> {
+    let count = read_int(reader)?;
+    let blength = read_int(reader)?;
+    let s2length = if protocol_version >= 27 {
+        read_int(reader)?
+    } else {
+        0
+    };
+    let remainder = read_int(reader)?;
+
+    Ok((count, blength, s2length, remainder))
 }
