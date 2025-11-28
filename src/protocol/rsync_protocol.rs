@@ -313,10 +313,14 @@ pub fn write_vstring<W: Write>(writer: &mut W, s: &str) -> Result<()> {
 }
 
 pub fn read_vstring<R: Read>(reader: &mut R) -> Result<String> {
+    eprintln!("[VSTRING] read_vstring called");
     let mut len = reader.read_u8()? as usize;
+    eprintln!("[VSTRING] First byte: {:#04x}, len so far: {}", len, len);
 
     if (len & 0x80) != 0 {
-        len = (len & !0x80) * 0x100 + reader.read_u8()? as usize;
+        let second_byte = reader.read_u8()?;
+        len = (len & !0x80) * 0x100 + second_byte as usize;
+        eprintln!("[VSTRING] Second byte: {:#04x}, final len: {}", second_byte, len);
     }
 
     if len > 0x7FFF {
@@ -324,8 +328,11 @@ pub fn read_vstring<R: Read>(reader: &mut R) -> Result<String> {
     }
 
     if len == 0 {
+        eprintln!("[VSTRING] Empty string");
         return Ok(String::new());
     }
+
+    eprintln!("[VSTRING] Reading {} bytes for string content", len);
 
     let mut buf = vec![0u8; len];
     reader.read_exact(&mut buf)?;

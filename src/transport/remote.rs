@@ -78,7 +78,15 @@ impl RemoteTransport {
             let mut ndx_state_gen = NdxState::new();
 
             for (idx, remote_entry) in remote_file_entries.iter().enumerate() {
-                if remote_entry.is_dir {
+                if remote_entry.is_dir || remote_entry.is_symlink {
+                    continue;
+                }
+
+                const S_IFMT: u32 = 0o170000;
+                const S_IFREG: u32 = 0o100000;
+                let file_type = remote_entry.mode & S_IFMT;
+                if file_type != S_IFREG {
+                    verbose.print_verbose(&format!("Skipping non-regular file {}: {} (mode: {:#o})", idx, remote_entry.path.display(), remote_entry.mode));
                     continue;
                 }
 
@@ -162,6 +170,11 @@ impl RemoteTransport {
                         verbose.print_verbose(&format!("    Block reference: {}", -token));
                     }
                 }
+
+                let checksum_len = 16;
+                let mut sender_checksum = vec![0u8; checksum_len];
+                channel.read_exact(&mut sender_checksum)?;
+                verbose.print_verbose(&format!("  Read sender checksum: {} bytes", checksum_len));
 
                 fs::write(&file_path, &file_data)?;
 
